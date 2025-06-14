@@ -1,0 +1,7 @@
+# Add this to your Home Assistant configuration.yaml
+panel_iframe:
+  react_dashboard:
+    title: React Dashboard
+    url: "http://homeassistant.local:5173"
+    icon: mdi:react
+    require_admin: false

@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Dark mode by default */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-gray-950;
+}
+
+/* Drag and drop styles */
+.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.drag-overlay {
+  background: rgba(139, 92, 246, 0.1);
+  border: 2px dashed rgb(139, 92, 246);
+  border-radius: 1rem;
+}

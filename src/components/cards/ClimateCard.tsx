@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
-import { Thermometer, Droplets, Fan, Power, Minus, Plus, MoreVertical } from 'lucide-react';
+import { Thermometer, Droplets, Fan, Power, Minus, Plus, MoreVertical, Flame, Snowflake, Wind } from 'lucide-react';
+import ClimateModal from '../ClimateModal';
 
 interface ClimateCardProps {
   entityId: string;
@@ -10,6 +11,7 @@ interface ClimateCardProps {
 const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
   const { callService } = useHomeAssistant();
   const [isAdjusting, setIsAdjusting] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -35,13 +37,27 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
   };
   
   const getModeIcon = () => {
+    const iconClass = "w-5 h-5";
     switch (hvacMode) {
-      case 'heat': return '🔥';
-      case 'cool': return '❄️';
+      case 'heat': return <Flame className={iconClass} />;
+      case 'cool': return <Snowflake className={iconClass} />;
       case 'heat_cool': 
-      case 'auto': return '♻️';
-      case 'off': return '⭕';
-      default: return '🌡️';
+      case 'auto': return <Wind className={iconClass} />;
+      case 'fan_only': return <Fan className={iconClass} />;
+      case 'off': return <Power className={iconClass} />;
+      default: return <Thermometer className={iconClass} />;
+    }
+  };
+  
+  const getModeBackground = () => {
+    switch (hvacMode) {
+      case 'heat': return 'bg-orange-500/20';
+      case 'cool': return 'bg-blue-500/20';
+      case 'heat_cool': 
+      case 'auto': return 'bg-green-500/20';
+      case 'fan_only': return 'bg-purple-500/20';
+      case 'off': return 'bg-gray-700';
+      default: return 'bg-gray-700';
     }
   };
   
@@ -89,27 +105,39 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
   };
   
   return (
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group min-h-[200px]">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h3 className="text-white font-medium text-lg">{friendlyName}</h3>
-          <div className="flex items-center gap-2 mt-1">
-            <span className={`text-sm font-medium ${getModeColor()}`}>
-              {getModeIcon()} {hvacMode.toUpperCase()}
-            </span>
-            {presetMode && (
-              <span className="text-xs text-gray-500">• {presetMode}</span>
-            )}
+    <>
+      <div 
+        onClick={() => setShowModal(true)}
+        className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group min-h-[200px] cursor-pointer"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="text-white font-medium text-lg">{friendlyName}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-md ${getModeBackground()}`}>
+                <span className={getModeColor()}>
+                  {getModeIcon()}
+                </span>
+                <span className={`text-sm font-medium ${getModeColor()}`}>
+                  {hvacMode.toUpperCase()}
+                </span>
+              </div>
+              {presetMode && (
+                <span className="text-xs text-gray-500">• {presetMode}</span>
+              )}
+            </div>
           </div>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowModal(true);
+            }}
+            className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
         </div>
-        <button 
-          onClick={(e) => e.stopPropagation()}
-          className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </button>
-      </div>
       
       {/* Temperature Display */}
       <div className="flex items-center justify-between mb-4">
@@ -123,7 +151,10 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
         {targetTemp !== undefined && hvacMode !== 'off' && (
           <div className="flex items-center gap-3">
             <button
-              onClick={() => adjustTemperature(-1)}
+              onClick={(e) => {
+                e.stopPropagation();
+                adjustTemperature(-1);
+              }}
               disabled={isAdjusting}
               className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50"
             >
@@ -136,7 +167,10 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
               <div className="text-xs text-gray-400">Target</div>
             </div>
             <button
-              onClick={() => adjustTemperature(1)}
+              onClick={(e) => {
+                e.stopPropagation();
+                adjustTemperature(1);
+              }}
               disabled={isAdjusting}
               className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50"
             >
@@ -163,29 +197,96 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
           )}
         </div>
         
-        {/* Controls */}
-        <div className="flex items-center gap-2">
+      </div>
+      
+      {/* Quick Mode Controls */}
+      <div className="mt-4 bg-gray-700/50 rounded-lg p-1 flex items-center gap-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePower();
+          }}
+          className={`flex-1 p-2 rounded-md transition-colors flex items-center justify-center gap-2 ${
+            hvacMode === 'off' 
+              ? 'bg-gray-600 text-white' 
+              : 'bg-transparent text-gray-400 hover:bg-gray-600/50'
+          }`}
+          title="Power"
+        >
+          <Power className="w-4 h-4" />
+        </button>
+        
+        {attributes.hvac_modes?.includes('cool') && (
           <button
-            onClick={cycleHvacMode}
-            className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
-            title="Change mode"
-          >
-            <Thermometer className={`w-4 h-4 ${getModeColor()}`} />
-          </button>
-          <button
-            onClick={togglePower}
-            className={`p-2 rounded-lg transition-colors ${
-              hvacMode === 'off' 
-                ? 'bg-gray-700 hover:bg-gray-600' 
-                : 'bg-purple-600 hover:bg-purple-700'
+            onClick={(e) => {
+              e.stopPropagation();
+              callService('climate', 'set_hvac_mode', {
+                entity_id: entityId,
+                hvac_mode: 'cool'
+              });
+            }}
+            className={`flex-1 p-2 rounded-md transition-colors flex items-center justify-center gap-2 ${
+              hvacMode === 'cool' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-transparent text-gray-400 hover:bg-gray-600/50'
             }`}
-            title="Power"
+            title="Cool"
           >
-            <Power className="w-4 h-4 text-white" />
+            <Snowflake className="w-4 h-4" />
           </button>
-        </div>
+        )}
+        
+        {attributes.hvac_modes?.includes('heat') && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              callService('climate', 'set_hvac_mode', {
+                entity_id: entityId,
+                hvac_mode: 'heat'
+              });
+            }}
+            className={`flex-1 p-2 rounded-md transition-colors flex items-center justify-center gap-2 ${
+              hvacMode === 'heat' 
+                ? 'bg-orange-600 text-white' 
+                : 'bg-transparent text-gray-400 hover:bg-gray-600/50'
+            }`}
+            title="Heat"
+          >
+            <Flame className="w-4 h-4" />
+          </button>
+        )}
+        
+        {attributes.hvac_modes?.includes('fan_only') && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              callService('climate', 'set_hvac_mode', {
+                entity_id: entityId,
+                hvac_mode: 'fan_only'
+              });
+            }}
+            className={`flex-1 p-2 rounded-md transition-colors flex items-center justify-center gap-2 ${
+              hvacMode === 'fan_only' 
+                ? 'bg-purple-600 text-white' 
+                : 'bg-transparent text-gray-400 hover:bg-gray-600/50'
+            }`}
+            title="Fan"
+          >
+            <Fan className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
+    
+    {/* Climate Modal */}
+    {showModal && (
+      <ClimateModal
+        entityId={entityId}
+        entity={entity}
+        onClose={() => setShowModal(false)}
+      />
+    )}
+    </>
   );
 };
 

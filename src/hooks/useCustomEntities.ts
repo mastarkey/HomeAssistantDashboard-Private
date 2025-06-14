@@ -55,6 +55,20 @@ export function useCustomEntities() {
       [id]: {
         ...prev[id],
         ...updates,
+        attributes: {
+          ...prev[id]?.attributes,
+          ...updates.attributes,
+        }
+      }
+    }));
+  };
+  
+  const moveCustomEntityToRoom = (id: string, newRoom: string) => {
+    setCustomEntities(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        room: newRoom,
       }
     }));
   };
@@ -75,6 +89,7 @@ export function useCustomEntities() {
     customEntities,
     addCustomEntity,
     updateCustomEntity,
+    moveCustomEntityToRoom,
     deleteCustomEntity,
     getCustomEntitiesAsArray,
   };

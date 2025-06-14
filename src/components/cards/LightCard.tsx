@@ -6,9 +6,12 @@ import DeviceModal from '../DeviceModal';
 interface LightCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const LightCard: React.FC<LightCardProps> = ({ entityId, entity }) => {
+const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
   const { callService } = useHomeAssistant();
   const [isToggling, setIsToggling] = useState(false);
   const [isAdjusting, setIsAdjusting] = useState(false);
@@ -188,6 +191,9 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity }) => {
         entityId={entityId}
         entity={entity}
         onClose={() => setShowModal(false)}
+        onEntityUpdate={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
       />
     )}
     </>

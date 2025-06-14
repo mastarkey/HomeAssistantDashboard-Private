@@ -6,9 +6,12 @@ import DeviceModal from '../DeviceModal';
 interface SwitchCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity }) => {
+const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
   const { callService } = useHomeAssistant();
   const [isToggling, setIsToggling] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -85,6 +88,9 @@ const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity }) => {
           entityId={entityId}
           entity={entity}
           onClose={() => setShowModal(false)}
+          onEntityUpdate={onEntityUpdate}
+          rooms={rooms}
+          isCustom={isCustom}
         />
       )}
     </>

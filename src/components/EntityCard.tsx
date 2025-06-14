@@ -9,6 +9,7 @@ import {
   Home,
   Settings
 } from 'lucide-react';
+import EditDeviceModal from './EditDeviceModal';
 
 // Import specialized cards
 import ClimateCard from './cards/ClimateCard';
@@ -25,9 +26,12 @@ import FanCard from './cards/FanCard';
 interface EntityCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity }) => {
+const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
   const domain = entityId.split('.')[0];
   
   // Use specialized cards for specific domains
@@ -39,11 +43,11 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity }) => {
     case 'media_player':
       return <MediaPlayerCard entityId={entityId} entity={entity} />;
     case 'light':
-      return <LightCard entityId={entityId} entity={entity} />;
+      return <LightCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'camera':
       return <CameraCard entityId={entityId} entity={entity} />;
     case 'switch':
-      return <SwitchCard entityId={entityId} entity={entity} />;
+      return <SwitchCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'sensor':
     case 'binary_sensor':
       return <SensorCard entityId={entityId} entity={entity} />;
@@ -55,14 +59,15 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity }) => {
       return <FanCard entityId={entityId} entity={entity} />;
     default:
       // Fall back to generic card for other domains
-      return <GenericEntityCard entityId={entityId} entity={entity} />;
+      return <GenericEntityCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
   }
 };
 
 // Generic card for switches, sensors, and other entities
-const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity }) => {
+const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
   const { callService } = useHomeAssistant();
   const [isToggling, setIsToggling] = React.useState(false);
+  const [showEditModal, setShowEditModal] = React.useState(false);
   const domain = entityId.split('.')[0];
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -144,69 +149,109 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity }) => {
   // Render switch/toggle card
   if (isToggleable) {
     return (
-      <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
-            <span className="text-white font-medium">{friendlyName}</span>
+      <>
+        <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
+              <span className="text-white font-medium">{friendlyName}</span>
+            </div>
+            {onEntityUpdate && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEditModal(true);
+                }}
+                className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                title="Edit device"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+            )}
           </div>
-          <button 
-            onClick={(e) => e.stopPropagation()}
-            className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
-          >
-            <MoreVertical className="w-5 h-5" />
-          </button>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 uppercase tracking-wider">{domain}</span>
+            <button
+              onClick={handleToggle}
+              disabled={isToggling}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${
+                state === 'on' ? 'bg-purple-600' : 'bg-gray-700'
+              } ${
+                isToggling ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-all duration-200 ${
+                  state === 'on' ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
         </div>
         
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 uppercase tracking-wider">{domain}</span>
-          <button
-            onClick={handleToggle}
-            disabled={isToggling}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${
-              state === 'on' ? 'bg-purple-600' : 'bg-gray-700'
-            } ${
-              isToggling ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105'
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-all duration-200 ${
-                state === 'on' ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
-      </div>
+        {/* Edit Device Modal */}
+        {showEditModal && onEntityUpdate && (
+          <EditDeviceModal
+            entityId={entityId}
+            entity={entity}
+            onClose={() => setShowEditModal(false)}
+            onSave={onEntityUpdate}
+            rooms={rooms || []}
+            isCustom={isCustom}
+          />
+        )}
+      </>
     );
   }
 
   // Render scene/script/automation card
   if (isActivatable) {
     return (
-      <div 
-        onClick={handleActivate}
-        className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer"
-      >
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
-              {getIcon()}
+      <>
+        <div 
+          onClick={handleActivate}
+          className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer"
+        >
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
+                {getIcon()}
+              </div>
+              <span className="text-white font-medium">{friendlyName}</span>
             </div>
-            <span className="text-white font-medium">{friendlyName}</span>
+            {onEntityUpdate && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEditModal(true);
+                }}
+                className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                title="Edit device"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+            )}
           </div>
-          <button 
-            onClick={(e) => e.stopPropagation()}
-            className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
-          >
-            <MoreVertical className="w-5 h-5" />
-          </button>
+          
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-400">Status: {state}</p>
+            <span className="text-xs text-gray-500 uppercase tracking-wider">{domain}</span>
+          </div>
         </div>
         
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-400">Status: {state}</p>
-          <span className="text-xs text-gray-500 uppercase tracking-wider">{domain}</span>
-        </div>
-      </div>
+        {/* Edit Device Modal */}
+        {showEditModal && onEntityUpdate && (
+          <EditDeviceModal
+            entityId={entityId}
+            entity={entity}
+            onClose={() => setShowEditModal(false)}
+            onSave={onEntityUpdate}
+            rooms={rooms || []}
+            isCustom={isCustom}
+          />
+        )}
+      </>
     );
   }
 
@@ -216,55 +261,89 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity }) => {
     const deviceClass = entity.attributes?.device_class || '';
     
     return (
-      <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
-        <div className="flex items-start justify-between mb-3">
-          <span className="text-white font-medium">{friendlyName}</span>
-          <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
-            {getIcon()}
+      <>
+        <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+          <div className="flex items-start justify-between mb-3">
+            <span className="text-white font-medium">{friendlyName}</span>
+            <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
+              {getIcon()}
+            </div>
+          </div>
+          
+          <div className="mt-2">
+            <p className="text-2xl font-bold text-white">
+              {state}
+              {unit && <span className="text-lg font-normal text-gray-400 ml-1">{unit}</span>}
+            </p>
+            {deviceClass && (
+              <p className="text-xs text-gray-500 capitalize">{deviceClass}</p>
+            )}
+          </div>
+          
+          <div className="mt-3">
+            <span className="text-xs text-gray-500 uppercase tracking-wider">SENSOR</span>
           </div>
         </div>
         
-        <div className="mt-2">
-          <p className="text-2xl font-bold text-white">
-            {state}
-            {unit && <span className="text-lg font-normal text-gray-400 ml-1">{unit}</span>}
-          </p>
-          {deviceClass && (
-            <p className="text-xs text-gray-500 capitalize">{deviceClass}</p>
-          )}
-        </div>
-        
-        <div className="mt-3">
-          <span className="text-xs text-gray-500 uppercase tracking-wider">SENSOR</span>
-        </div>
-      </div>
+        {/* Edit Device Modal */}
+        {showEditModal && onEntityUpdate && (
+          <EditDeviceModal
+            entityId={entityId}
+            entity={entity}
+            onClose={() => setShowEditModal(false)}
+            onSave={onEntityUpdate}
+            rooms={rooms || []}
+            isCustom={isCustom}
+          />
+        )}
+      </>
     );
   }
 
   // Default card for unknown entities
   return (
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
-          <span className="text-white font-medium">{friendlyName}</span>
+    <>
+      <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
+            <span className="text-white font-medium">{friendlyName}</span>
+          </div>
+          {onEntityUpdate && (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowEditModal(true);
+              }}
+              className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+              title="Edit device"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+          )}
         </div>
-        <button 
-          onClick={(e) => e.stopPropagation()}
-          className="text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </button>
+        
+        <div className="mt-2">
+          <p className="text-sm text-gray-400">Status: {state}</p>
+        </div>
+        
+        <div className="mt-3">
+          <span className="text-xs text-gray-500 uppercase tracking-wider">{domain.replace('_', ' ')}</span>
+        </div>
       </div>
       
-      <div className="mt-2">
-        <p className="text-sm text-gray-400">Status: {state}</p>
-      </div>
-      
-      <div className="mt-3">
-        <span className="text-xs text-gray-500 uppercase tracking-wider">{domain.replace('_', ' ')}</span>
-      </div>
-    </div>
+      {/* Edit Device Modal */}
+      {showEditModal && onEntityUpdate && (
+        <EditDeviceModal
+          entityId={entityId}
+          entity={entity}
+          onClose={() => setShowEditModal(false)}
+          onSave={onEntityUpdate}
+          rooms={rooms || []}
+          isCustom={isCustom}
+        />
+      )}
+    </>
   );
 };
 

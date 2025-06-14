@@ -2,10 +2,18 @@ import React, { useState, useMemo } from 'react';
 import { useHomeAssistant } from '../hooks/useHomeAssistant';
 import { useOrderStorage } from '../hooks/useOrderStorage';
 import { useCustomEntities } from '../hooks/useCustomEntities';
+import { useEntityOverrides } from '../hooks/useEntityOverrides';
+import { useCustomRooms } from '../hooks/useCustomRooms';
+import { useCustomCategories } from '../hooks/useCustomCategories';
+import { useHiddenRooms } from '../hooks/useHiddenRooms';
 import EntityCard from './EntityCard';
 import DraggableCard from './DraggableCard';
 import AddDeviceModal from './AddDeviceModal';
-import { getRoomsFromEntities, filterEntitiesByRoom, filterEntitiesByCategory } from '../utils/entityHelpers';
+import AddCustomDeviceModal from './AddCustomDeviceModal';
+import AddRoomModal from './AddRoomModal';
+import AddCategoryModal from './AddCategoryModal';
+import { filterEntitiesByCategory } from '../utils/entityHelpers';
+import { getRoomsFromEntitiesWithOverrides, filterEntitiesByRoomWithOverrides } from '../utils/entityHelpersWithOverrides';
 import { deduplicateEntities } from '../utils/deduplicateEntities';
 import { filterPrimaryDevices } from '../utils/deviceFiltering';
 import {
@@ -37,8 +45,11 @@ import {
   UtensilsCrossed,
   Sofa,
   Car,
-  DoorOpen
+  DoorOpen,
+  Plus,
+  Trash2,
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 
 // Define device categories with Lucide icons
 const deviceCategories = [
@@ -51,34 +62,43 @@ const deviceCategories = [
   { id: 'cameras', name: 'Cameras', icon: <Camera className="w-8 h-8" />, domains: ['camera'] },
 ];
 
-// Category domains mapping for the helper function
-const categoryDomains = deviceCategories.reduce((acc, cat) => {
-  acc[cat.id] = cat.domains;
-  return acc;
-}, {} as Record<string, string[]>);
-
-// Room icons mapping
+// Room icons mapping (using normalized keys)
 const roomIcons: Record<string, React.ReactNode> = {
   'bedroom': <Bed className="w-8 h-8" />,
-  'master bedroom': <Bed className="w-8 h-8" />,
-  'guest bedroom': <Bed className="w-8 h-8" />,
+  'master_bedroom': <Bed className="w-8 h-8" />,
+  'guest_bedroom': <Bed className="w-8 h-8" />,
   'bathroom': <Bath className="w-8 h-8" />,
   'kitchen': <UtensilsCrossed className="w-8 h-8" />,
-  'living room': <Sofa className="w-8 h-8" />,
+  'living_room': <Sofa className="w-8 h-8" />,
+  'dining_room': <UtensilsCrossed className="w-8 h-8" />,
   'garage': <Car className="w-8 h-8" />,
   'entryway': <DoorOpen className="w-8 h-8" />,
   'hallway': <DoorOpen className="w-8 h-8" />,
+  'foyer': <DoorOpen className="w-8 h-8" />,
+  'front_patio': <Home className="w-8 h-8" />,
+  'back_patio': <Home className="w-8 h-8" />,
+  'driveway': <Car className="w-8 h-8" />,
+  'laundry_room': <Home className="w-8 h-8" />,
+  'den': <Sofa className="w-8 h-8" />,
+  'other': <Home className="w-8 h-8" />,
   'default': <Home className="w-8 h-8" />
 };
 
 const Dashboard: React.FC = () => {
   const { entities, config, connected, error, devices } = useHomeAssistant();
   const { updateRoomOrder, updateCategoryOrder, updateDeviceOrder, getRoomOrder, getCategoryOrder, getDeviceOrder } = useOrderStorage();
-  const { customEntities, addCustomEntity } = useCustomEntities();
+  const { customEntities, addCustomEntity, updateCustomEntity, moveCustomEntityToRoom } = useCustomEntities();
+  const { setEntityOverride, getEffectiveRoom } = useEntityOverrides();
+  const { customRooms, addCustomRoom, deleteCustomRoom } = useCustomRooms();
+  const { customCategories, addCustomCategory, deleteCustomCategory } = useCustomCategories();
+  const { hideRoom, isRoomHidden } = useHiddenRooms();
   const [view, setView] = useState<'rooms' | 'categories'>('rooms');
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showAddDevice, setShowAddDevice] = useState(false);
+  const [showAddCustomDevice, setShowAddCustomDevice] = useState(false);
+  const [showAddRoom, setShowAddRoom] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -87,31 +107,61 @@ const Dashboard: React.FC = () => {
     })
   );
 
+  // Category domains mapping for the helper function
+  const categoryDomains = useMemo(() => {
+    const domains: Record<string, string[]> = {};
+    
+    // Add default category domains
+    deviceCategories.forEach(cat => {
+      domains[cat.id] = cat.domains;
+    });
+    
+    // Add custom category domains
+    customCategories.forEach(cat => {
+      domains[cat.id] = cat.domains;
+    });
+    
+    return domains;
+  }, [customCategories]);
+
   // Merge Home Assistant entities with custom entities
   const allEntities = useMemo(() => {
     if (!entities) return customEntities;
     return { ...entities, ...customEntities };
   }, [entities, customEntities]);
   
-  // Get unique rooms from entities
+  // Get unique rooms from entities and merge with custom rooms
   const rooms = useMemo(() => {
-    if (!allEntities) return [];
-    const allRooms = getRoomsFromEntities(allEntities);
+    if (!allEntities) return customRooms;
+    const haRooms = getRoomsFromEntitiesWithOverrides(allEntities, getEffectiveRoom);
+    
+    // Merge Home Assistant rooms with custom rooms
+    const mergedRooms = [...haRooms];
+    customRooms.forEach(customRoom => {
+      if (!mergedRooms.find(room => room.id === customRoom.id)) {
+        mergedRooms.push({
+          ...customRoom,
+          entityCount: 0  // Add entityCount for custom rooms
+        });
+      }
+    });
     
     // Calculate deduplicated counts for each room
-    const roomsWithCounts = allRooms.map(room => {
-      const roomEntities = filterEntitiesByRoom(allEntities, room.id);
+    const roomsWithCounts = mergedRooms.map(room => {
+      const roomEntities = filterEntitiesByRoomWithOverrides(allEntities, room.id, getEffectiveRoom);
       const deduplicated = deduplicateEntities(roomEntities, devices, allEntities);
       const primaryCount = filterPrimaryDevices(deduplicated, devices, allEntities).length;
       return {
         ...room,
-        entityCount: primaryCount
+        entityCount: primaryCount,
+        isCustom: customRooms.some(cr => cr.id === room.id)
       };
-    }).filter(room => room.id !== 'other' || room.entityCount > 5);
+    }).filter(room => room.id !== 'other' || room.entityCount > 5)
+      .filter(room => !isRoomHidden(room.id)); // Filter out hidden rooms
     
     // Apply saved order
     return getRoomOrder(roomsWithCounts);
-  }, [allEntities, devices, getRoomOrder]);
+  }, [allEntities, devices, getRoomOrder, getEffectiveRoom, customRooms, isRoomHidden]);
 
   // Filter entities based on selection
   const displayedEntities = useMemo(() => {
@@ -120,7 +170,7 @@ const Dashboard: React.FC = () => {
     let filtered: [string, any][] = [];
     
     if (view === 'rooms' && selectedRoom) {
-      filtered = filterEntitiesByRoom(allEntities, selectedRoom);
+      filtered = filterEntitiesByRoomWithOverrides(allEntities, selectedRoom, getEffectiveRoom);
     } else if (view === 'categories' && selectedCategory) {
       filtered = filterEntitiesByCategory(allEntities, selectedCategory, categoryDomains);
     }
@@ -156,7 +206,7 @@ const Dashboard: React.FC = () => {
     }
     
     return sorted;
-  }, [allEntities, view, selectedRoom, selectedCategory, devices, getDeviceOrder]);
+  }, [allEntities, view, selectedRoom, selectedCategory, devices, getDeviceOrder, categoryDomains]);
 
   // Get category counts
   const categoryCounts = useMemo(() => {
@@ -170,13 +220,34 @@ const Dashboard: React.FC = () => {
       counts[category.id] = primaryDevices.length;
     });
     
+    // Add counts for custom categories
+    customCategories.forEach(category => {
+      const categoryEntities = filterEntitiesByCategory(allEntities, category.id, categoryDomains);
+      const deduplicated = deduplicateEntities(categoryEntities, devices, allEntities);
+      const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
+      counts[category.id] = primaryDevices.length;
+    });
+    
     return counts;
-  }, [allEntities, devices]);
+  }, [allEntities, devices, customCategories, categoryDomains]);
   
-  // Get ordered categories
+  // Get ordered categories and merge with custom categories
   const orderedCategories = useMemo(() => {
-    return getCategoryOrder([...deviceCategories]);
-  }, [getCategoryOrder]);
+    // Convert custom category icons from string to React components
+    const customCategoriesWithIcons = customCategories.map(cat => {
+      const IconComponent = (LucideIcons as any)[cat.icon as string];
+      return {
+        ...cat,
+        icon: IconComponent ? <IconComponent className="w-8 h-8" /> : <Home className="w-8 h-8" />,
+        isCustom: true
+      };
+    });
+    
+    // Merge default categories with custom categories
+    const allCategories = [...deviceCategories, ...customCategoriesWithIcons];
+    
+    return getCategoryOrder(allCategories);
+  }, [getCategoryOrder, customCategories]);
   
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -208,6 +279,27 @@ const Dashboard: React.FC = () => {
           updateDeviceOrder(key, newOrder);
         }
       }
+    }
+  };
+  
+  const handleEntityUpdate = (entityId: string, updates: any) => {
+    // Check if it's a custom entity
+    if (entityId.startsWith('custom.')) {
+      if (updates.room) {
+        moveCustomEntityToRoom(entityId, updates.room);
+      }
+      if (updates.name || updates.attributes) {
+        updateCustomEntity(entityId, {
+          ...(updates.name && { name: updates.name }),
+          ...(updates.attributes && { attributes: updates.attributes }),
+        });
+      }
+    } else {
+      // For Home Assistant entities, just save overrides
+      const overrideUpdates: any = {};
+      if (updates.room) overrideUpdates.room = updates.room;
+      if (updates.name) overrideUpdates.friendlyName = updates.name;
+      setEntityOverride(entityId, overrideUpdates);
     }
   };
 
@@ -292,43 +384,122 @@ const Dashboard: React.FC = () => {
                   strategy={rectSortingStrategy}
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
-                    {view === 'rooms' && rooms.map((room) => (
-                      <DraggableCard key={room.id} id={room.id}>
+                    {view === 'rooms' && (
+                      <>
+                        {rooms.map((room) => {
+                          // Handle custom room icons
+                          let icon = roomIcons[room.id] || roomIcons.default;
+                          if (room.isCustom && room.icon) {
+                            const IconComponent = (LucideIcons as any)[room.icon];
+                            if (IconComponent) {
+                              icon = <IconComponent className="w-8 h-8" />;
+                            }
+                          }
+                          
+                          return (
+                            <DraggableCard key={room.id} id={room.id}>
+                              <div className="relative">
+                                <button
+                                  onClick={() => setSelectedRoom(room.id)}
+                                  className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 hover:bg-gray-800 transition-all group w-full"
+                                >
+                                  <div className="flex justify-center mb-4 text-gray-400 group-hover:text-purple-400 transition-colors">
+                                    {icon}
+                                  </div>
+                                  <h3 className="font-semibold text-white mb-1">
+                                    {room.name}
+                                  </h3>
+                                  <p className="text-sm text-gray-500">
+                                    {room.entityCount} devices
+                                  </p>
+                                </button>
+                                {room.isCustom && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm(`Are you sure you want to delete the room "${room.name}"?`)) {
+                                        deleteCustomRoom(room.id);
+                                      }
+                                    }}
+                                    className="absolute top-2 right-2 p-2 bg-gray-700 hover:bg-red-600 rounded-lg transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4 text-white" />
+                                  </button>
+                                )}
+                              </div>
+                            </DraggableCard>
+                          );
+                        })}
+                        {/* Add Room Button */}
                         <button
-                          onClick={() => setSelectedRoom(room.id)}
-                          className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 hover:bg-gray-800 transition-all group w-full"
+                          onClick={() => setShowAddRoom(true)}
+                          className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 hover:bg-gray-800 transition-all group border-2 border-dashed border-gray-700 hover:border-purple-600"
                         >
                           <div className="flex justify-center mb-4 text-gray-400 group-hover:text-purple-400 transition-colors">
-                            {roomIcons[room.id] || roomIcons.default}
+                            <Plus className="w-8 h-8" />
                           </div>
                           <h3 className="font-semibold text-white mb-1">
-                            {room.name}
+                            Add Room
                           </h3>
                           <p className="text-sm text-gray-500">
-                            {room.entityCount} devices
+                            Create custom room
                           </p>
                         </button>
-                      </DraggableCard>
-                    ))}
+                      </>
+                    )}
 
-                    {view === 'categories' && orderedCategories.map((category) => (
-                      <DraggableCard key={category.id} id={category.id}>
+                    {view === 'categories' && (
+                      <>
+                        {orderedCategories.map((category) => (
+                          <DraggableCard key={category.id} id={category.id}>
+                            <div className="relative">
+                              <button
+                                onClick={() => setSelectedCategory(category.id)}
+                                className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 hover:bg-gray-800 transition-all group w-full"
+                              >
+                                <div className="flex justify-center mb-4 text-gray-400 group-hover:text-purple-400 transition-colors">
+                                  {category.icon}
+                                </div>
+                                <h3 className="font-semibold text-white mb-1">
+                                  {category.name}
+                                </h3>
+                                <p className="text-sm text-gray-500">
+                                  {categoryCounts[category.id] || 0} devices
+                                </p>
+                              </button>
+                              {category.isCustom && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm(`Are you sure you want to delete the category "${category.name}"?`)) {
+                                      deleteCustomCategory(category.id);
+                                    }
+                                  }}
+                                  className="absolute top-2 right-2 p-2 bg-gray-700 hover:bg-red-600 rounded-lg transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4 text-white" />
+                                </button>
+                              )}
+                            </div>
+                          </DraggableCard>
+                        ))}
+                        {/* Add Category Button */}
                         <button
-                          onClick={() => setSelectedCategory(category.id)}
-                          className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 hover:bg-gray-800 transition-all group w-full"
+                          onClick={() => setShowAddCategory(true)}
+                          className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 hover:bg-gray-800 transition-all group border-2 border-dashed border-gray-700 hover:border-purple-600"
                         >
                           <div className="flex justify-center mb-4 text-gray-400 group-hover:text-purple-400 transition-colors">
-                            {category.icon}
+                            <Plus className="w-8 h-8" />
                           </div>
                           <h3 className="font-semibold text-white mb-1">
-                            {category.name}
+                            Add Category
                           </h3>
                           <p className="text-sm text-gray-500">
-                            {categoryCounts[category.id] || 0} devices
+                            Create custom type
                           </p>
                         </button>
-                      </DraggableCard>
-                    ))}
+                      </>
+                    )}
                   </div>
                 </SortableContext>
               </DndContext>
@@ -350,33 +521,95 @@ const Dashboard: React.FC = () => {
                 </button>
 
                 {/* Room/Category Title */}
-                <h2 className="text-2xl font-bold text-white mb-6">
-                  {selectedRoom && rooms.find(r => r.id === selectedRoom)?.name}
-                  {selectedCategory && orderedCategories.find(c => c.id === selectedCategory)?.name}
-                  <span className="text-base font-normal text-gray-400 ml-2">
-                    ({displayedEntities.length} devices)
-                  </span>
-                </h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-white">
+                    {selectedRoom && rooms.find(r => r.id === selectedRoom)?.name}
+                    {selectedCategory && orderedCategories.find(c => c.id === selectedCategory)?.name}
+                    <span className="text-base font-normal text-gray-400 ml-2">
+                      ({displayedEntities.length} devices)
+                    </span>
+                  </h2>
+                  
+                  {/* Delete Room Button - Show for any room with no devices */}
+                  {selectedRoom && displayedEntities.length === 0 && (
+                    <button
+                      onClick={() => {
+                        const room = rooms.find(r => r.id === selectedRoom);
+                        if (room && confirm(`Are you sure you want to delete the room "${room.name}"?`)) {
+                          if (room.isCustom) {
+                            // Delete custom room completely
+                            deleteCustomRoom(selectedRoom);
+                          } else {
+                            // Hide Home Assistant detected room
+                            hideRoom(selectedRoom);
+                          }
+                          setSelectedRoom(null);
+                        }
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete Room
+                    </button>
+                  )}
+                  
+                  {/* Delete Category Button - Only show for custom categories with no devices */}
+                  {selectedCategory && displayedEntities.length === 0 && (
+                    <>
+                      {orderedCategories.find(c => c.id === selectedCategory)?.isCustom && (
+                        <button
+                          onClick={() => {
+                            const category = orderedCategories.find(c => c.id === selectedCategory);
+                            if (category && confirm(`Are you sure you want to delete the category "${category.name}"?`)) {
+                              deleteCustomCategory(selectedCategory);
+                              setSelectedCategory(null);
+                            }
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Category
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
 
                 {/* Entity Grid */}
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={displayedEntities.map(([id]) => id)}
-                    strategy={rectSortingStrategy}
+                {displayedEntities.length > 0 ? (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
                   >
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-                      {displayedEntities.map(([entityId, entity]) => (
-                        <DraggableCard key={entityId} id={entityId}>
-                          <EntityCard entityId={entityId} entity={entity} />
-                        </DraggableCard>
-                      ))}
+                    <SortableContext
+                      items={displayedEntities.map(([id]) => id)}
+                      strategy={rectSortingStrategy}
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+                        {displayedEntities.map(([entityId, entity]) => (
+                          <DraggableCard key={entityId} id={entityId}>
+                            <EntityCard 
+                              entityId={entityId} 
+                              entity={entity}
+                              onEntityUpdate={handleEntityUpdate}
+                              rooms={rooms}
+                              isCustom={entityId.startsWith('custom.')}
+                            />
+                          </DraggableCard>
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                ) : (
+                  <div className="text-center py-12 bg-gray-800/30 rounded-2xl">
+                    <div className="text-gray-400 mb-4">
+                      <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg">No devices in this {view === 'rooms' ? 'room' : 'category'}</p>
+                      <p className="text-sm mt-2">Add devices using the "Add Device" button above</p>
                     </div>
-                  </SortableContext>
-                </DndContext>
+                  </div>
+                )}
               </div>
             )}
 
@@ -404,8 +637,44 @@ const Dashboard: React.FC = () => {
       {showAddDevice && (
         <AddDeviceModal
           onClose={() => setShowAddDevice(false)}
+          onAssign={(entityId, roomId) => {
+            setEntityOverride(entityId, { room: roomId });
+          }}
+          onCreateCustom={() => {
+            setShowAddDevice(false);
+            setShowAddCustomDevice(true);
+          }}
+          entities={allEntities}
+          devices={devices}
+          rooms={rooms}
+          getEffectiveRoom={getEffectiveRoom}
+        />
+      )}
+      
+      {/* Add Custom Device Modal */}
+      {showAddCustomDevice && (
+        <AddCustomDeviceModal
+          onClose={() => setShowAddCustomDevice(false)}
           onAdd={addCustomEntity}
           rooms={rooms}
+        />
+      )}
+      
+      {/* Add Room Modal */}
+      {showAddRoom && (
+        <AddRoomModal
+          onClose={() => setShowAddRoom(false)}
+          onAdd={addCustomRoom}
+          existingRooms={rooms}
+        />
+      )}
+      
+      {/* Add Category Modal */}
+      {showAddCategory && (
+        <AddCategoryModal
+          onClose={() => setShowAddCategory(false)}
+          onAdd={addCustomCategory}
+          existingCategories={orderedCategories}
         />
       )}
     </div>

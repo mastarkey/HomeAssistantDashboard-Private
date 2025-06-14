@@ -94,19 +94,45 @@ This is within the Home Assistant config directory, which maps to `/config` in t
   - Temperature and forecast
   - Beautiful weather icons
 
+- 🌡️ **Climate**
+  - Current temperature display
+  - Target temperature control with +/- buttons
+  - Quick HVAC mode controls (heat/cool/fan/off)
+  - Visual mode indicators with colored backgrounds
+  - Humidity display (if available)
+  - Fan mode settings
+  - Full modal with:
+    - 24-hour temperature history chart
+    - Recent state changes logbook
+    - Advanced HVAC and fan controls
+
 ### Advanced Modal System
 - ✅ **Device Details Modal**: Click any device for comprehensive control
 - ✅ **Related Entities**: Shows all sensors and sub-entities in modal
 - ✅ **Device Information**: Model, firmware, MAC address (where available)
 - ✅ **Scene Integration**: Related scenes appear in device modals
 - ✅ **Activity Log**: Recent device events and state changes
+- ✅ **Climate History**: Temperature charts and state change logs
 
 ### Organization & Customization
 - ✅ **Drag-and-Drop Reordering**: Reorganize rooms, categories, and devices
 - ✅ **Persistent Layout**: Card order saved in browser storage
 - ✅ **Visual Feedback**: Drag handles appear on hover
-- ✅ **Add Custom Devices**: Add devices manually with room assignment
-- ✅ **Comprehensive Device Support**: Cards for all common smart home device types
+- ✅ **Room Management**: 
+  - Add custom rooms with icon selection
+  - Delete empty rooms (custom or detected)
+  - Automatic room detection from device names
+  - Hidden rooms for decluttering
+- ✅ **Category Management**:
+  - Add custom device categories
+  - Define domains for categories
+  - Delete unused categories
+- ✅ **Device Management**:
+  - Add devices from Home Assistant to rooms
+  - Create custom devices not in Home Assistant
+  - Edit device room assignments
+  - Move devices between rooms
+  - Search and filter unassigned devices
 
 ## 🛠️ Technology Stack
 
@@ -128,20 +154,39 @@ This is within the Home Assistant config directory, which maps to `/config` in t
 │   │   ├── DeviceModal.tsx       # General device detail modal
 │   │   ├── CameraModal.tsx       # Specialized camera modal with feeds
 │   │   ├── CameraImage.tsx       # Smart camera image component
+│   │   ├── ClimateModal.tsx      # Climate modal with history and controls
+│   │   ├── DraggableCard.tsx     # Wrapper for drag-and-drop functionality
+│   │   ├── EditDeviceModal.tsx   # Modal for editing device properties
+│   │   ├── AddDeviceModal.tsx    # Modal for adding HA devices to rooms
+│   │   ├── AddCustomDeviceModal.tsx # Modal for creating custom devices
+│   │   ├── AddRoomModal.tsx      # Modal for adding custom rooms
+│   │   ├── AddCategoryModal.tsx  # Modal for adding custom categories
 │   │   └── cards/
 │   │       ├── LightCard.tsx     # Light control with brightness slider
 │   │       ├── CameraCard.tsx    # Camera preview card
 │   │       ├── SwitchCard.tsx    # Switch toggle card
-│   │       ├── ClimateCard.tsx   # Climate control card
+│   │       ├── ClimateCard.tsx   # Climate control card with quick modes
 │   │       ├── MediaPlayerCard.tsx # Media player controls
-│   │       └── WeatherCard.tsx   # Weather display card
+│   │       ├── WeatherCard.tsx   # Weather display card
+│   │       ├── SensorCard.tsx    # Sensor value display
+│   │       ├── CoverCard.tsx     # Blinds/curtains control
+│   │       ├── LockCard.tsx      # Lock/unlock controls
+│   │       └── FanCard.tsx       # Fan speed and oscillation
 │   ├── hooks/
-│   │   └── useHomeAssistant.ts   # WebSocket connection and device registry
+│   │   ├── useHomeAssistant.ts   # WebSocket connection and device registry
+│   │   ├── useOrderStorage.ts    # Persist drag-and-drop order in localStorage
+│   │   ├── useCustomEntities.ts  # Manage custom (non-HA) devices
+│   │   ├── useEntityOverrides.ts # Override room assignments for HA devices
+│   │   ├── useCustomRooms.ts     # Manage custom rooms
+│   │   ├── useCustomCategories.ts # Manage custom categories
+│   │   └── useHiddenRooms.ts     # Hide empty rooms from view
 │   ├── utils/
 │   │   ├── entityHelpers.ts      # Room detection and categorization
+│   │   ├── entityHelpersWithOverrides.ts # Room helpers with override support
 │   │   ├── deviceFiltering.ts    # Smart filtering for primary devices
 │   │   ├── deduplicateEntities.ts # Remove duplicate entities
-│   │   └── deviceRegistry.ts     # Device registry integration
+│   │   ├── deviceRegistry.ts     # Device registry integration
+│   │   └── unassignedDevices.ts  # Find devices not assigned to rooms
 │   ├── types/                    # TypeScript type definitions
 │   ├── App.tsx                   # Root application component
 │   ├── main.tsx                  # Application entry point
@@ -299,15 +344,29 @@ The dashboard connects to Home Assistant using:
 - For production, consider using environment variables
 - All WebSocket communications are authenticated
 
+## 🚧 Recent Updates
+
+### Version 2.0 (Latest)
+- ✅ **Room and Category Management**: Add/delete custom rooms and categories
+- ✅ **Enhanced Device Assignment**: Move devices between rooms with visual interface
+- ✅ **Climate Card Overhaul**: Quick mode controls, temperature history charts
+- ✅ **Improved Add Device Modal**: Shows available Home Assistant devices by type
+- ✅ **Room Normalization**: Fixed duplicate room issues (e.g., "dining room" vs "dining_room")
+- ✅ **Edit Device Functionality**: Edit room assignments and device names
+- ✅ **Hidden Rooms**: Hide empty rooms to declutter interface
+- ✅ **Custom Device Support**: Add devices that don't exist in Home Assistant
+- ✅ **Drag-and-Drop Everything**: Reorder rooms, categories, and devices
+
 ## 🚧 Roadmap
 
 Future enhancements planned:
-- [ ] Drag-and-drop dashboard customization
 - [ ] Custom themes and color schemes
 - [ ] Energy monitoring dashboard
 - [ ] Automation creation interface
 - [ ] Mobile app wrapper
-- [x] Device registry integration for better device identification
+- [ ] Device grouping and scenes
+- [ ] Notification center
+- [ ] Voice control integration
 
 ## 🤝 Contributing
 

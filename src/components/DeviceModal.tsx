@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useHomeAssistant } from '../hooks/useHomeAssistant';
-import { X, Trash2, Lightbulb, ToggleLeft, ToggleRight } from 'lucide-react';
+import { X, Trash2, Lightbulb, ToggleLeft, ToggleRight, Edit2 } from 'lucide-react';
 import { getRelatedEntities } from '../utils/deviceFiltering';
+import EditDeviceModal from './EditDeviceModal';
 
 interface DeviceModalProps {
   entityId: string;
   entity: any;
   onClose: () => void;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose }) => {
+const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService, entities } = useHomeAssistant();
+  const [showEditModal, setShowEditModal] = useState(false);
   const [localState, setLocalState] = useState({
     brightness: 0,
     colorTemp: 0,
@@ -107,12 +112,23 @@ const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose }) 
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-800">
           <h2 className="text-2xl font-semibold text-white">{friendlyName}</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onEntityUpdate && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                title="Edit device"
+              >
+                <Edit2 className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
@@ -305,6 +321,18 @@ const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose }) 
           </button>
         </div>
       </div>
+      
+      {/* Edit Device Modal */}
+      {showEditModal && onEntityUpdate && (
+        <EditDeviceModal
+          entityId={entityId}
+          entity={entity}
+          onClose={() => setShowEditModal(false)}
+          onSave={onEntityUpdate}
+          rooms={rooms}
+          isCustom={isCustom}
+        />
+      )}
     </div>
   );
 };

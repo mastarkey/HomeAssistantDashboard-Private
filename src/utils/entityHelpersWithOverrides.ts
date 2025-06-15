@@ -87,13 +87,22 @@ export function filterEntitiesByRoomWithOverrides(
     const normalizedRoom = room.toLowerCase().replace(/[\s_]+/g, '_');
     const matches = normalizedRoom === roomId;
     
-    if (roomId === 'garage' && matches) {
-      console.log(`[DEBUG] Entity ${entityId} matches garage: room=${room}, normalizedRoom=${normalizedRoom}`);
+    if ((roomId === 'garage' || roomId === 'other') && matches) {
+      console.log(`[DEBUG] Entity ${entityId} matches ${roomId}: room=${room}, normalizedRoom=${normalizedRoom}`);
+    }
+    
+    // Log all entities going to 'other' room
+    if (roomId === 'other' && matches) {
+      const friendlyName = (entity as any).attributes?.friendly_name || entityId;
+      console.log(`[DEBUG] Entity in 'other' room: ${entityId} (${friendlyName})`);
     }
     
     return matches;
   });
   
   console.log(`[DEBUG] filterEntitiesByRoomWithOverrides found ${results.length} entities for room ${roomId}`);
+  if (roomId === 'other' && results.length > 0) {
+    console.log(`[DEBUG] Entities in 'other' room:`, results.map(([id]) => id));
+  }
   return results;
 }

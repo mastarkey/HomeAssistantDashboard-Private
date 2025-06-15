@@ -73,11 +73,23 @@ export function isPrimaryDevice(
   const friendlyName = entity.attributes?.friendly_name || '';
   const entityName = entityId.split('.')[1];
   
+  // FORCE SHOW Tesla Wall Connector entities - no matter what
+  if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+    console.log(`[DEBUG] FORCE SHOWING Tesla entity: ${entityId}`);
+    return true;
+  }
+  
   // DEBUG: Log sensor entities to see what's being filtered
   if (domain === 'sensor' || domain === 'binary_sensor') {
     if (entityId.toLowerCase().includes('tesla') || friendlyName.toLowerCase().includes('tesla') ||
         entityId.toLowerCase().includes('wall_connector') || friendlyName.toLowerCase().includes('wall connector')) {
-      console.log(`[DEBUG] Checking Tesla sensor: ${entityId} (${friendlyName})`);
+      const device = devices ? getDeviceForEntity(entityId, allEntities || {}, devices) : null;
+      console.log(`[DEBUG] Checking Tesla sensor: ${entityId} (${friendlyName})`, {
+        domain,
+        entityName,
+        device: device?.name || 'No device',
+        willBeFiltered: false // We'll update this as we go
+      });
     }
   }
   
@@ -156,6 +168,23 @@ export function isPrimaryDevice(
   if (primaryDeviceDomains.includes(domain)) {
     console.log(`[DEBUG] Evaluating ${domain}: ${entityId}`);
     
+    // Check if this has a recognized device type configuration - ALWAYS show these
+    if (devices && allEntities) {
+      const device = getDeviceForEntity(entityId, allEntities, devices);
+      const deviceTypeConfig = getDeviceTypeConfig(device, allEntities, entityId);
+      if (deviceTypeConfig) {
+        console.log(`[DEBUG] ${entityId} is recognized device type: ${deviceTypeConfig.name} - ALWAYS SHOW`);
+        return true;
+      }
+    }
+    
+    // Also check without device registry for entities that might not have device info
+    const deviceTypeConfig = getDeviceTypeConfig(null, allEntities || { [entityId]: entity }, entityId);
+    if (deviceTypeConfig && (deviceTypeConfig.id === 'ev_charger' || deviceTypeConfig.id === 'nas')) {
+      console.log(`[DEBUG] ${entityId} matched device type pattern: ${deviceTypeConfig.name} - ALWAYS SHOW`);
+      return true;
+    }
+    
     // Check if this is a Tesla or Synology device - always show these
     if (domain === 'switch' || domain === 'sensor') {
       const lowerEntityId = entityId.toLowerCase();
@@ -163,8 +192,10 @@ export function isPrimaryDevice(
       if (lowerEntityId.includes('tesla') || lowerName.includes('tesla') ||
           lowerEntityId.includes('synology') || lowerName.includes('synology') ||
           lowerEntityId.includes('diskstation') || lowerName.includes('diskstation') ||
-          lowerEntityId.includes('wall_connector') || lowerName.includes('wall connector')) {
-        console.log(`[DEBUG] ${entityId} is Tesla/Synology device (${domain}) - showing`);
+          lowerEntityId.includes('wall_connector') || lowerName.includes('wall connector') ||
+          lowerEntityId.includes('wall connector') || lowerName.includes('wallconnector') ||
+          lowerEntityId.includes('charger') || lowerName.includes('charger')) {
+        console.log(`[DEBUG] ${entityId} is Tesla/Synology/Charger device (${domain}) - showing`);
         return true;
       }
     }
@@ -240,14 +271,32 @@ export function isPrimaryDevice(
   if (domain === 'binary_sensor' || domain === 'sensor') {
     console.log(`[DEBUG] Evaluating sensor: ${entityId}`);
     
+    // ALWAYS show Tesla Wall Connector entities
+    if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+      console.log(`[DEBUG] ${entityId} is Tesla Wall Connector - FORCE SHOW`);
+      return true;
+    }
+    
+    // Check if this has a recognized device type configuration - ALWAYS show these
+    if (devices && allEntities) {
+      const device = getDeviceForEntity(entityId, allEntities, devices);
+      const deviceTypeConfig = getDeviceTypeConfig(device, allEntities, entityId);
+      if (deviceTypeConfig) {
+        console.log(`[DEBUG] ${entityId} is recognized device type: ${deviceTypeConfig.name} - ALWAYS SHOW`);
+        return true;
+      }
+    }
+    
     // Check if this is a Tesla or Synology device - always show these
     const lowerEntityId = entityId.toLowerCase();
     const lowerName = friendlyName.toLowerCase();
     if (lowerEntityId.includes('tesla') || lowerName.includes('tesla') ||
         lowerEntityId.includes('synology') || lowerName.includes('synology') ||
         lowerEntityId.includes('diskstation') || lowerName.includes('diskstation') ||
-        lowerEntityId.includes('wall_connector') || lowerName.includes('wall connector')) {
-      console.log(`[DEBUG] ${entityId} is Tesla/Synology device - showing`);
+        lowerEntityId.includes('wall_connector') || lowerName.includes('wall connector') ||
+        lowerEntityId.includes('wall connector') || lowerName.includes('wallconnector') ||
+        lowerEntityId.includes('charger') || lowerName.includes('charger')) {
+      console.log(`[DEBUG] ${entityId} is Tesla/Synology/Charger device - showing`);
       return true;
     }
     

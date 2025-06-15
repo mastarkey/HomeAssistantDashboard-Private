@@ -29,7 +29,7 @@ import GenericDeviceCard from './cards/GenericDeviceCard';
 
 // Import device type detection
 import { getDeviceForEntity } from '../utils/deviceRegistry';
-import { getDeviceTypeConfig } from '../config/deviceTypes';
+import { getDeviceTypeConfig, getDeviceTypeById } from '../config/deviceTypes';
 
 interface EntityCardProps {
   entityId: string;
@@ -43,15 +43,45 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdat
   const { entities, devices } = useHomeAssistant();
   const domain = entityId.split('.')[0];
   
+  // DEBUG: Log Tesla entities
+  if (entityId.toLowerCase().includes('tesla')) {
+    console.log(`[DEBUG] EntityCard rendering Tesla entity: ${entityId}`, {
+      domain,
+      state: entity.state,
+      friendlyName: entity.attributes?.friendly_name
+    });
+  }
+  
   // Try to detect device type from device registry or entity patterns
   const device = devices && entities ? getDeviceForEntity(entityId, entities, devices) : null;
-  const deviceTypeConfig = getDeviceTypeConfig(device, entities || { [entityId]: entity }, entityId);
+  let deviceTypeConfig = getDeviceTypeConfig(device, entities || { [entityId]: entity }, entityId);
+  
+  // FALLBACK: Check if this is a Tesla Wall Connector even without device registry
+  if (!deviceTypeConfig && entityId.toLowerCase().includes('tesla_wall_connector')) {
+    console.log(`[DEBUG] Fallback detection for Tesla Wall Connector: ${entityId}`);
+    // Find the EV charger config
+    const evChargerConfig = getDeviceTypeById('ev_charger');
+    if (evChargerConfig) {
+      deviceTypeConfig = evChargerConfig;
+    }
+  }
+  
+  // DEBUG: Log device type detection results for Tesla
+  if (entityId.toLowerCase().includes('tesla')) {
+    console.log(`[DEBUG] Device type detection for ${entityId}:`, {
+      hasDevice: !!device,
+      deviceName: device?.name,
+      deviceTypeConfig: deviceTypeConfig?.name,
+      deviceTypeId: deviceTypeConfig?.id
+    });
+  }
   
   // If we have a device type configuration, check if we have a specialized card for it
   if (deviceTypeConfig) {
     // Use specialized cards for specific device types
     switch (deviceTypeConfig.id) {
       case 'ev_charger':
+        console.log(`[DEBUG] Using EVChargerCard for ${entityId}`);
         return <EVChargerCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
       case 'nas':
         return <NASCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;

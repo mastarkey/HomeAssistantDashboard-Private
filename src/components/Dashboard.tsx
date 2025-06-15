@@ -137,9 +137,9 @@ const Dashboard: React.FC = () => {
       const deduplicated = deduplicateEntities(roomEntities, devices, allEntities);
       const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
       
-      // Debug logging for garage room
-      if (room.id === 'garage') {
-        console.log('[DEBUG] Garage room entities:', {
+      // Debug logging for garage and other rooms
+      if (room.id === 'garage' || room.id === 'other') {
+        console.log(`[DEBUG] ${room.name} room entities:`, {
           allEntitiesCount: roomEntities.length,
           deduplicatedCount: deduplicated.length,
           primaryDevicesCount: primaryDevices.length,
@@ -193,12 +193,33 @@ const Dashboard: React.FC = () => {
 
   // Filter entities based on selection
   const displayedEntities = useMemo(() => {
+    console.log('[DEBUG] Computing displayedEntities for room:', selectedRoom, 'view:', view);
     if (!allEntities) return [];
     
     let filtered: [string, any][] = [];
     
     if (view === 'rooms' && selectedRoom) {
       filtered = filterEntitiesByRoomWithOverrides(allEntities, selectedRoom, getEffectiveRoom);
+      
+      // FORCE ADD Tesla entities to Other room
+      if (selectedRoom === 'other') {
+        // Add any Tesla Wall Connector entities that might have been missed
+        Object.entries(allEntities).forEach(([entityId, entity]) => {
+          if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+            const exists = filtered.some(([id]) => id === entityId);
+            if (!exists) {
+              console.log(`[DEBUG] FORCE ADDING Tesla entity to Other room: ${entityId}`);
+              filtered.push([entityId, entity]);
+            }
+          }
+        });
+        
+        console.log('[DEBUG] Step 1 - Entities in Other room after filterEntitiesByRoomWithOverrides:', filtered.map(([id, entity]) => ({
+          id,
+          name: entity.attributes?.friendly_name || id,
+          domain: id.split('.')[0]
+        })));
+      }
     } else if (view === 'categories' && selectedCategory) {
       filtered = filterEntitiesByCategory(allEntities, selectedCategory, categoryDomains);
     }
@@ -206,8 +227,24 @@ const Dashboard: React.FC = () => {
     // Deduplicate entities
     const deduplicated = deduplicateEntities(filtered, devices, allEntities);
     
+    if (selectedRoom === 'other') {
+      console.log('[DEBUG] Step 2 - After deduplication:', deduplicated.map(([id, entity]) => ({
+        id,
+        name: entity.attributes?.friendly_name || id,
+        domain: id.split('.')[0]
+      })));
+    }
+    
     // Filter to only show primary devices
     const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
+    
+    if (selectedRoom === 'other') {
+      console.log('[DEBUG] Step 3 - After filterPrimaryDevices:', primaryDevices.map(([id, entity]) => ({
+        id,
+        name: entity.attributes?.friendly_name || id,
+        domain: id.split('.')[0]
+      })));
+    }
     
     // Filter out hidden entities and camera detection entities
     const visibleDevices = primaryDevices.filter(([entityId, entity]) => {
@@ -222,6 +259,25 @@ const Dashboard: React.FC = () => {
       
       return true;
     });
+    
+    // Debug final visible devices for Other room
+    if (selectedRoom === 'other') {
+      console.log('[DEBUG] Step 4 - Final visible devices in Other room:', visibleDevices.map(([id, entity]) => ({
+        id,
+        name: entity.attributes?.friendly_name || id,
+        domain: id.split('.')[0]
+      })));
+      
+      // Also log all entities with their overrides
+      console.log('[DEBUG] Entity overrides:', Object.entries(allEntities)
+        .filter(([id]) => id.toLowerCase().includes('tesla'))
+        .map(([id]) => ({
+          id,
+          override: getEntityOverride(id),
+          effectiveRoom: getEffectiveRoom(id)
+        }))
+      );
+    }
     
     // Sort entities
     const sorted = visibleDevices.sort((a, b) => {
@@ -245,6 +301,16 @@ const Dashboard: React.FC = () => {
       return getDeviceOrder(selectedRoom, sorted);
     } else if (selectedCategory) {
       return getDeviceOrder(selectedCategory, sorted);
+    }
+    
+    // Final debug for Other room
+    if (selectedRoom === 'other') {
+      console.log('[DEBUG] FINAL displayedEntities for Other room:', sorted.length, 'entities');
+      sorted.forEach(([id, entity]) => {
+        if (id.toLowerCase().includes('tesla')) {
+          console.log('[DEBUG] Tesla entity in final display:', id, entity.state);
+        }
+      });
     }
     
     return sorted;
@@ -688,17 +754,22 @@ const Dashboard: React.FC = () => {
                       strategy={rectSortingStrategy}
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-                        {displayedEntities.map(([entityId, entity]) => (
-                          <DraggableCard key={entityId} id={entityId}>
-                            <EntityCard 
-                              entityId={entityId} 
-                              entity={entity}
-                              onEntityUpdate={handleEntityUpdate}
-                              rooms={rooms}
-                              isCustom={entityId.startsWith('custom.')}
-                            />
-                          </DraggableCard>
-                        ))}
+                        {displayedEntities.map(([entityId, entity]) => {
+                          if (entityId.toLowerCase().includes('tesla')) {
+                            console.log('[DEBUG] Rendering Tesla entity card:', entityId);
+                          }
+                          return (
+                            <DraggableCard key={entityId} id={entityId}>
+                              <EntityCard 
+                                entityId={entityId} 
+                                entity={entity}
+                                onEntityUpdate={handleEntityUpdate}
+                                rooms={rooms}
+                                isCustom={entityId.startsWith('custom.')}
+                              />
+                            </DraggableCard>
+                          );
+                        })}
                       </div>
                     </SortableContext>
                   </DndContext>

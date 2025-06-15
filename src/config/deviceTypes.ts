@@ -139,10 +139,10 @@ export const deviceTypeConfigs: DeviceTypeConfig[] = [
     primaryColor: 'text-green-400',
     secondaryColor: 'bg-green-500',
     patterns: {
-      model: [/chargepoint/i, /wallbox/i, /tesla.*wall/i, /juicebox/i, /grizzl-e/i, /easee/i],
+      model: [/chargepoint/i, /wallbox/i, /tesla.*wall/i, /juicebox/i, /grizzl-e/i, /easee/i, /wall.*connector/i, /1457768-02-H/i],
       manufacturer: [/chargepoint/i, /wallbox/i, /tesla/i, /juicenet/i, /grizzl-e/i, /easee/i, /siemens/i],
-      name: [/ev.*charger/i, /car.*charger/i, /vehicle.*charger/i, /charging.*station/i],
-      entityId: [/_charger$/i, /_evse$/i, /chargepoint/i, /wallbox/i, /_ev_/i, /tesla.*wall/i, /juicebox/i]
+      name: [/ev.*charger/i, /car.*charger/i, /vehicle.*charger/i, /charging.*station/i, /wall.*connector/i, /tesla.*charger/i, /tesla.*wall/i],
+      entityId: [/_charger$/i, /_evse$/i, /chargepoint/i, /wallbox/i, /_ev_/i, /tesla.*wall/i, /juicebox/i, /wall.*connector/i, /tesla.*charger/i, /tesla_wall_connector/i]
     },
     capabilities: {
       domains: ['sensor', 'switch', 'number'],
@@ -315,14 +315,17 @@ export function getDeviceTypeConfig(
   // Also check entity properties as fallback
   const entityName = (entity?.attributes?.friendly_name || entityId || '').toLowerCase();
   
-  // DEBUG: Log device info for sensors
-  if (entityId && (entityId.startsWith('sensor.') || entityId.startsWith('binary_sensor.'))) {
-    console.log(`[DEBUG] getDeviceTypeConfig for ${entityId}:`, {
+  // DEBUG: Log device info for Tesla entities
+  if ((entityId && entityId.toLowerCase().includes('tesla')) || 
+      (deviceName && deviceName.includes('tesla')) ||
+      (entityName && entityName.includes('tesla'))) {
+    console.log(`[DEBUG] Tesla device detection for ${entityId}:`, {
       model,
       manufacturer,
       deviceName,
       entityName,
-      hasDevice: !!device
+      hasDevice: !!device,
+      deviceId: device?.id
     });
   }
   

@@ -12,6 +12,25 @@ interface SensorCardProps {
 
 const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const [showEditModal, setShowEditModal] = useState(false);
+  
+  // SPECIAL CASE: Check if this is a Tesla Wall Connector sensor
+  // If so, import and use EVChargerCard instead
+  if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+    console.log(`[DEBUG] SensorCard detected Tesla entity ${entityId}, redirecting to EVChargerCard`);
+    const EVChargerCard = React.lazy(() => import('./EVChargerCard'));
+    return (
+      <React.Suspense fallback={<div className="bg-gray-800/50 rounded-2xl p-4 animate-pulse h-32" />}>
+        <EVChargerCard 
+          entityId={entityId} 
+          entity={entity} 
+          onEntityUpdate={onEntityUpdate} 
+          rooms={rooms} 
+          isCustom={isCustom} 
+        />
+      </React.Suspense>
+    );
+  }
+  
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
   const unit = entity.attributes?.unit_of_measurement || '';

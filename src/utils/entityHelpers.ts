@@ -41,7 +41,7 @@ const locationIndicators = ['downstairs', 'upstairs', 'front', 'back', 'main'];
 
 // Brand/device names to exclude from room detection
 const excludedWords = [
-  'sonos', 'nest', 'google', 'tesla', 'philips', 'hue', 'ikea', 'xiaomi',
+  'sonos', 'nest', 'google', 'philips', 'hue', 'ikea', 'xiaomi',
   'samsung', 'lg', 'sony', 'apple', 'amazon', 'alexa', 'echo',
   'sensor', 'switch', 'light', 'device', 'heat', 'water', 'pump',
   'fridge', 'coffee', 'dream', 'mini', 'center', 'lennox', 'irobot',

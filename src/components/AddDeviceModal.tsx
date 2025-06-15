@@ -13,9 +13,12 @@ import {
   Blinds,
   Search,
   Home,
-  Bot
+  Bot,
+  Car,
+  Server,
+  ChevronRight
 } from 'lucide-react';
-import { getAllAvailableDevices, groupDevicesByDomain } from '../utils/unassignedDevices';
+import { groupEntitiesByDevice, getDeviceDisplayInfo, type GroupedDevice } from '../utils/deviceGrouping';
 
 interface AddDeviceModalProps {
   onClose: () => void;
@@ -26,34 +29,6 @@ interface AddDeviceModalProps {
   getEffectiveRoom?: (entityId: string, defaultRoom?: string) => string;
 }
 
-const domainIcons: Record<string, React.ReactNode> = {
-  light: <Lightbulb className="w-5 h-5" />,
-  switch: <Power className="w-5 h-5" />,
-  climate: <Thermometer className="w-5 h-5" />,
-  lock: <Lock className="w-5 h-5" />,
-  camera: <Camera className="w-5 h-5" />,
-  media_player: <Tv className="w-5 h-5" />,
-  sensor: <Activity className="w-5 h-5" />,
-  binary_sensor: <Shield className="w-5 h-5" />,
-  fan: <Fan className="w-5 h-5" />,
-  cover: <Blinds className="w-5 h-5" />,
-  vacuum: <Bot className="w-5 h-5" />,
-};
-
-const domainNames: Record<string, string> = {
-  light: 'Lights',
-  switch: 'Switches',
-  climate: 'Climate',
-  lock: 'Locks',
-  camera: 'Cameras',
-  media_player: 'Media Players',
-  sensor: 'Sensors',
-  binary_sensor: 'Binary Sensors',
-  fan: 'Fans',
-  cover: 'Covers',
-  vacuum: 'Vacuums',
-};
-
 const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ 
   onClose, 
   onAssign, 
@@ -62,55 +37,70 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
   rooms,
   getEffectiveRoom 
 }) => {
-  console.log('[DEBUG] AddDeviceModal opened with:', {
-    totalEntities: entities ? Object.keys(entities).length : 0,
-    sensorCount: entities ? Object.keys(entities).filter(k => k.startsWith('sensor.')).length : 0,
-    switchCount: entities ? Object.keys(entities).filter(k => k.startsWith('switch.')).length : 0,
-    devicesCount: devices ? devices.length : 0
-  });
-  const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
-  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<GroupedDevice | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Get all available devices
-  const availableDevices = useMemo(() => {
-    const allDevices = getAllAvailableDevices(entities, devices);
-    console.log('[DEBUG] AddDeviceModal - Total available devices:', allDevices.length);
-    return allDevices;
+  // Get grouped devices
+  const groupedDevicesList = useMemo(() => {
+    const grouped = groupEntitiesByDevice(entities, devices);
+    console.log('[DEBUG] Grouped devices:', grouped.length);
+    return grouped;
   }, [entities, devices]);
 
-  // Group devices by domain
-  const groupedDevices = useMemo(() => {
-    const grouped = groupDevicesByDomain(availableDevices);
-    console.log('[DEBUG] Grouped devices by domain:', Object.keys(grouped).map(domain => `${domain}: ${grouped[domain].length}`));
-    return grouped;
-  }, [availableDevices]);
-
-  // Filter devices based on search query
-  const filteredDevices = useMemo(() => {
-    if (!selectedDomain || !groupedDevices[selectedDomain]) return [];
-    
-    const domainDevices = groupedDevices[selectedDomain];
-    
-    if (!searchQuery) return domainDevices;
+  // Filter grouped devices based on search
+  const filteredGroupedDevices = useMemo(() => {
+    if (!searchQuery) return groupedDevicesList;
     
     const query = searchQuery.toLowerCase();
-    return domainDevices.filter(([entityId, entity]) => {
-      const friendlyName = entity.attributes?.friendly_name || entityId;
-      return friendlyName.toLowerCase().includes(query) || entityId.toLowerCase().includes(query);
+    return groupedDevicesList.filter(device => {
+      const info = getDeviceDisplayInfo(device);
+      return info.name.toLowerCase().includes(query) || 
+             info.description.toLowerCase().includes(query) ||
+             device.deviceId.toLowerCase().includes(query);
     });
-  }, [selectedDomain, groupedDevices, searchQuery]);
+  }, [groupedDevicesList, searchQuery]);
 
   const handleAssign = () => {
     if (selectedDevice && selectedRoom) {
       console.log('[DEBUG] Assigning device to room:', {
         device: selectedDevice,
-        room: selectedRoom,
-        entity: entities[selectedDevice]
+        primaryEntity: selectedDevice.primaryEntity.entityId,
+        deviceType: selectedDevice.deviceType,
+        room: selectedRoom
       });
-      onAssign(selectedDevice, selectedRoom);
+      
+      // Always assign the primary entity
+      onAssign(selectedDevice.primaryEntity.entityId, selectedRoom);
       onClose();
+    }
+  };
+
+  // Get icon for device type
+  const getDeviceIcon = (device: GroupedDevice) => {
+    const iconClass = "w-5 h-5";
+    
+    // Check device type first
+    if (device.deviceType) {
+      if (device.deviceType.includes('Charger')) return <Car className={iconClass} />;
+      if (device.deviceType === 'NAS') return <Server className={iconClass} />;
+    }
+    
+    // Fall back to domain-based icons
+    const primaryDomain = device.primaryEntity.entityId.split('.')[0];
+    switch (primaryDomain) {
+      case 'light': return <Lightbulb className={iconClass} />;
+      case 'switch': return <Power className={iconClass} />;
+      case 'climate': return <Thermometer className={iconClass} />;
+      case 'lock': return <Lock className={iconClass} />;
+      case 'camera': return <Camera className={iconClass} />;
+      case 'media_player': return <Tv className={iconClass} />;
+      case 'sensor': return <Activity className={iconClass} />;
+      case 'binary_sensor': return <Shield className={iconClass} />;
+      case 'fan': return <Fan className={iconClass} />;
+      case 'cover': return <Blinds className={iconClass} />;
+      case 'vacuum': return <Bot className={iconClass} />;
+      default: return <Home className={iconClass} />;
     }
   };
 
@@ -127,67 +117,14 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
           </button>
         </div>
 
-        {/* Domain Selection */}
-        {!selectedDomain ? (
+        {!selectedDevice ? (
           <div>
             <p className="text-gray-400 mb-6">
-              Select a device type to see your actual Home Assistant devices. You can assign or reassign them to rooms.
+              Select a device to add it to a room. Each device includes all its capabilities and sensors.
             </p>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
-              {/* Always show common domains even if no devices yet */}
-              {['light', 'switch', 'sensor', 'binary_sensor', 'media_player', 'camera', 'climate', 'cover', 'fan', 'vacuum'].map(domain => {
-                const devices = groupedDevices[domain] || [];
-                console.log(`[DEBUG] Rendering button for domain: ${domain} with ${devices.length} devices`);
-                return (
-                  <button
-                    key={domain}
-                    onClick={() => setSelectedDomain(domain)}
-                    className={`${devices.length > 0 ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-900 hover:bg-gray-800 opacity-60'} rounded-lg p-4 transition-colors text-left group`}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
-                        {domainIcons[domain] || <Home className="w-5 h-5" />}
-                      </div>
-                      <span className="text-white font-medium">
-                        {domainNames[domain] || domain}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      {devices.length} device{devices.length !== 1 ? 's' : ''}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-
-          </div>
-        ) : (
-          <div>
-            {/* Back Button */}
-            <button
-              onClick={() => {
-                setSelectedDomain(null);
-                setSelectedDevice(null);
-                setSearchQuery('');
-              }}
-              className="text-gray-400 hover:text-white transition-colors mb-4"
-            >
-              ← Back to device types
-            </button>
-
-            <h3 className="text-lg font-medium text-white mb-2 flex items-center gap-2">
-              <span className="text-gray-400">
-                {domainIcons[selectedDomain] || <Home className="w-5 h-5" />}
-              </span>
-              {domainNames[selectedDomain] || selectedDomain}
-            </h3>
-            <p className="text-sm text-gray-400 mb-4">
-              Select a {domainNames[selectedDomain]?.toLowerCase().slice(0, -1) || 'device'} from your Home Assistant to add it to a room
-            </p>
-
             {/* Search */}
-            <div className="relative mb-4">
+            <div className="relative mb-6">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
@@ -195,92 +132,137 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search devices..."
                 className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+                autoFocus
               />
             </div>
 
             {/* Device List */}
-            <div className="space-y-2 mb-6 max-h-64 overflow-y-auto">
-              {filteredDevices.length === 0 ? (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {filteredGroupedDevices.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">
                   {searchQuery ? 'No devices found matching your search.' : 'No devices found.'}
                 </p>
               ) : (
-                filteredDevices.map(([entityId, entity]) => (
-                  <button
-                    key={entityId}
-                    onClick={() => setSelectedDevice(entityId)}
-                    className={`w-full p-3 rounded-lg text-left transition-colors ${
-                      selectedDevice === entityId
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium">
-                          {entity.attributes?.friendly_name || entityId}
-                        </p>
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="font-mono text-xs opacity-50">{entityId}</span>
-                          {entity.attributes?.manufacturer && (
-                            <span className="opacity-70">{entity.attributes.manufacturer}</span>
-                          )}
-                          {entity.attributes?.model && (
-                            <span className="opacity-70">{entity.attributes.model}</span>
-                          )}
-                        </div>
-                        {getEffectiveRoom && getEffectiveRoom(entityId) && (
-                          <div className="flex items-center gap-1 mt-1 text-xs text-yellow-500">
-                            <Home className="w-3 h-3" />
-                            <span>Already in: {rooms.find(r => r.id === getEffectiveRoom(entityId))?.name || getEffectiveRoom(entityId)}</span>
+                filteredGroupedDevices.map(device => {
+                  const info = getDeviceDisplayInfo(device);
+                  const currentRoom = getEffectiveRoom ? getEffectiveRoom(device.primaryEntity.entityId) : undefined;
+                  const isSpecialDevice = device.deviceType === 'EV Charger' || device.deviceType === 'NAS';
+                  
+                  return (
+                    <button
+                      key={device.deviceId}
+                      onClick={() => setSelectedDevice(device)}
+                      className={`w-full p-4 rounded-lg text-left transition-colors ${
+                        isSpecialDevice 
+                          ? 'bg-purple-900/30 hover:bg-purple-800/40 border border-purple-700/50' 
+                          : 'bg-gray-800 hover:bg-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex gap-3">
+                          <div className={`mt-0.5 ${isSpecialDevice ? 'text-purple-400' : 'text-gray-400'}`}>
+                            {getDeviceIcon(device)}
                           </div>
-                        )}
+                          <div className="flex-1">
+                            <p className="font-medium text-white">
+                              {info.name}
+                            </p>
+                            <p className="text-sm text-gray-400 mt-1">
+                              {info.description}
+                            </p>
+                            {currentRoom && (
+                              <div className="flex items-center gap-1 mt-2 text-xs text-yellow-500">
+                                <Home className="w-3 h-3" />
+                                <span>Currently in: {rooms.find(r => r.id === currentRoom)?.name || currentRoom}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-gray-500 mt-0.5" />
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm">
-                          {entity.state}
-                          {entity.attributes?.unit_of_measurement && (
-                            <span className="ml-1">{entity.attributes.unit_of_measurement}</span>
-                          )}
-                        </p>
-                        {entity.attributes?.device_class && (
-                          <p className="text-xs text-gray-500 capitalize mt-1">{entity.attributes.device_class.replace(/_/g, ' ')}</p>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {/* Back Button */}
+            <button
+              onClick={() => {
+                setSelectedDevice(null);
+                setSelectedRoom('');
+              }}
+              className="text-gray-400 hover:text-white transition-colors mb-4"
+            >
+              ← Back to devices
+            </button>
+
+            {/* Selected Device Details */}
+            <div className="bg-gray-800 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="text-purple-400 mt-0.5">
+                  {getDeviceIcon(selectedDevice)}
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-white">
+                    {getDeviceDisplayInfo(selectedDevice).name}
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    {getDeviceDisplayInfo(selectedDevice).description}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
+                  This device includes {selectedDevice.entities.length} {selectedDevice.entities.length === 1 ? 'entity' : 'entities'}:
+                </p>
+                {selectedDevice.entities.map(({ entityId, entity, domain }) => (
+                  <div key={entityId} className="text-sm text-gray-300 bg-gray-900 rounded px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-medium">{entity.attributes?.friendly_name || entityId}</span>
+                        <span className="text-gray-500 ml-2 text-xs">({domain})</span>
+                      </div>
+                      {entity.state && (
+                        <span className="text-gray-400">
+                          {entity.state}
+                          {entity.attributes?.unit_of_measurement && ` ${entity.attributes.unit_of_measurement}`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Room Selection */}
-            {selectedDevice && (
-              <div className="border-t border-gray-800 pt-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Assign to Room
-                </label>
-                <select
-                  value={selectedRoom}
-                  onChange={(e) => setSelectedRoom(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"
-                >
-                  <option value="">Select a room</option>
-                  {rooms.map(room => (
-                    <option key={room.id} value={room.id}>
-                      {room.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Assign to Room
+              </label>
+              <select
+                value={selectedRoom}
+                onChange={(e) => setSelectedRoom(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"
+              >
+                <option value="">Select a room</option>
+                {rooms.map(room => (
+                  <option key={room.id} value={room.id}>
+                    {room.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Actions */}
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => {
-                  setSelectedDomain(null);
                   setSelectedDevice(null);
-                  setSearchQuery('');
+                  setSelectedRoom('');
                 }}
                 className="flex-1 px-4 py-3 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
               >

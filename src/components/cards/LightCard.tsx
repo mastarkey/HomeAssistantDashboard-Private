@@ -33,7 +33,6 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
   const currentEffect = attributes.effect;
   
   // Check supported features
-  const supportsBrightness = (supportedFeatures & 1) !== 0 || supportedColorModes.includes('brightness');
   const supportsColorTemp = (supportedFeatures & 2) !== 0 || supportedColorModes.includes('color_temp');
   const supportsColor = (supportedFeatures & 16) !== 0 || 
     supportedColorModes.includes('rgb') || 

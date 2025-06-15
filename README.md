@@ -227,6 +227,12 @@ This is within the Home Assistant config directory, which maps to `/config` in t
 ├── package.json                  # Dependencies and scripts
 ├── tailwind.config.js           # Tailwind configuration
 ├── vite.config.ts               # Vite configuration
+├── vite.config.ha.ts            # Vite configuration for HA native build
+├── NATIVE_INTEGRATION.md        # Native integration documentation
+├── DEVELOPMENT_GUIDE.md         # Development and production guide
+├── dev.sh                       # Development startup script
+├── deploy.sh                    # Production deployment script
+├── rollback.sh                  # Deployment rollback script
 └── README.md                    # This file
 ```
 
@@ -241,7 +247,24 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIzMzMzYjM3ZWUyYjk0ODRmOWQ3ODk5ZGV
 
 ### Home Assistant Configuration
 
-The dashboard is configured in `configuration.yaml`:
+The dashboard can be configured in two ways:
+
+#### 1. Native Integration (Recommended - No Lag)
+
+Add to your `configuration.yaml`:
+```yaml
+panel_custom:
+  - name: react-dashboard-working
+    sidebar_title: React Dashboard
+    sidebar_icon: mdi:react
+    module_url: /local/react-dashboard-working.js
+```
+
+This runs the dashboard natively within Home Assistant, eliminating webhook overhead and improving performance.
+
+#### 2. Development Mode (With Hot Reload)
+
+For development with hot reload:
 ```yaml
 lovelace:
   dashboards:
@@ -256,29 +279,70 @@ lovelace:
 
 ## 🚀 Quick Start
 
-### Starting the Dashboard
+### Using Convenience Scripts
 
-1. **Using the startup script**:
-   ```bash
-   /homeassistant/react-dashboard/start-dashboard.sh
-   ```
+#### Development Mode
+```bash
+cd /homeassistant/react-dashboard
+./dev.sh
+```
+This script:
+- Installs dependencies if needed
+- Kills any existing dev server
+- Starts the development server with hot reload
+- Shows helpful URLs and tips
 
-2. **Or manually**:
-   ```bash
-   cd /homeassistant/react-dashboard
-   npm run dev
-   ```
+#### Production Deployment
+```bash
+cd /homeassistant/react-dashboard
+./deploy.sh
+```
+This script:
+- Builds the optimized production bundle
+- Creates a backup of the current deployment
+- Deploys files to Home Assistant
+- Checks for required supporting files
+- Shows deployment statistics
+- Offers to check your configuration
+
+#### Rollback (if needed)
+```bash
+cd /homeassistant/react-dashboard
+./rollback.sh
+```
+This script:
+- Restores the previous deployment from backup
+- Useful if something goes wrong with a new deployment
+
+### Manual Steps (Alternative)
+
+#### Development Mode
+```bash
+cd /homeassistant/react-dashboard
+npm run dev
+```
+
+#### Production Deployment
+1. Build: `npm run build:ha`
+2. Deploy: Copy files to `/config/www/react-dashboard/`
+3. Clear browser cache and refresh
 
 ### Accessing the Dashboard
 
-- **From Home Assistant**: Click "React Dashboard" in the sidebar
-- **Direct URL**: http://192.168.1.7:5173
-- **Alternative**: http://homeassistant.local:5173
+- **Native Mode**: Click "React Dashboard" in the Home Assistant sidebar
+- **Development Mode**: http://192.168.1.7:5173 or http://homeassistant.local:5173
 
 ## 📦 Available Scripts
 
+### Convenience Scripts
+- `./dev.sh` - Complete development environment setup and launch
+- `./deploy.sh` - Build and deploy to Home Assistant with backup
+- `./rollback.sh` - Restore previous deployment from backup
+
+### NPM Scripts
 - `npm run dev` - Start development server with hot reload
-- `npm run build` - Build for production
+- `npm run build` - Build standard production bundle
+- `npm run build:ha` - Build for Home Assistant native integration
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint for code quality
 
@@ -333,9 +397,17 @@ Edit `src/utils/deviceFiltering.ts` to control which entities appear as primary 
 - **Desktop**: 4 columns
 - **Large screens**: 5+ columns
 
-## 🔌 WebSocket Connection
+## 🔌 Connection Modes
 
-The dashboard connects to Home Assistant using:
+### Native Mode (Production)
+When running as a native Home Assistant panel:
+- **No WebSocket needed**: Uses Home Assistant's built-in connection
+- **Direct data access**: Entities passed directly from HA
+- **Better performance**: No external API calls or webhooks
+- **Automatic updates**: Real-time entity updates via postMessage
+
+### Standalone Mode (Development)
+When running via `npm run dev`:
 - **URL**: Automatically detected (defaults to http://192.168.1.7:8123)
 - **Protocol**: WebSocket with real-time updates
 - **Authentication**: Long-lived access token
@@ -377,7 +449,14 @@ The dashboard connects to Home Assistant using:
 
 ## 🚧 Recent Updates
 
-### Version 2.1 (Latest)
+### Version 2.2 (Latest)
+- ✅ **Native Home Assistant Integration**: Dashboard now runs natively within HA, eliminating webhook lag
+- ✅ **Iframe Architecture**: Uses iframe with postMessage for better isolation and compatibility
+- ✅ **Optimized Build Process**: Special Vite configuration for Home Assistant deployment
+- ✅ **Connection Handling**: Smart detection of native vs standalone mode
+- ✅ **Performance Improvements**: No more external webhook calls, direct HA data access
+
+### Version 2.1
 - ✅ **HA Storage Integration**: Replaced browser localStorage with Home Assistant's frontend storage API
 - ✅ **Specialized Device Cards**: Added dedicated cards for EV Chargers and NAS devices
 - ✅ **Enhanced Device Discovery**: Dynamic pattern-based detection for Tesla, Synology, and other devices

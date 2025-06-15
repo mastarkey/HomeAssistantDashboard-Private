@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ha": "tsc -b && vite build --config vite.config.ha.ts",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:ha": "npm run build:ha && npm run copy:ha",
+    "copy:ha": "echo 'Copy dist-ha contents to your HA config/www/react-dashboard/ folder'"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

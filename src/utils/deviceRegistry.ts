@@ -1,4 +1,5 @@
 // Utility functions for working with Home Assistant device registry
+import { getDeviceTypeConfig } from '../config/deviceTypes';
 
 export interface Device {
   id: string;
@@ -114,13 +115,23 @@ export function getDeviceCapabilities(
   };
 }
 
-// Enhanced device type detection using registry info
+// Enhanced device type detection using registry info and our device type configurations
 export function getDeviceType(device: Device, entities: Record<string, any>): string {
   const capabilities = getDeviceCapabilities(device, entities);
   const model = (device.model || '').toLowerCase();
   const manufacturer = (device.manufacturer || '').toLowerCase();
   const name = (device.name || '').toLowerCase();
   
+  // First try to get a device type from our configuration
+  const primaryEntity = getPrimaryEntityForDevice(device, entities);
+  if (primaryEntity) {
+    const deviceTypeConfig = getDeviceTypeConfig(device, entities, primaryEntity[0]);
+    if (deviceTypeConfig) {
+      return deviceTypeConfig.id;
+    }
+  }
+  
+  // Fall back to original detection logic
   // Camera devices
   if (capabilities.hasCamera || model.includes('camera') || name.includes('camera')) {
     if (model.includes('doorbell') || name.includes('doorbell')) return 'doorbell';

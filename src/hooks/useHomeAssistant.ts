@@ -7,6 +7,7 @@ import {
   callService,
 } from 'home-assistant-js-websocket';
 import type { Connection, Auth, MessageBase } from 'home-assistant-js-websocket';
+import { haStorage } from '../services/haStorage';
 
 interface HomeAssistantState {
   connection: Connection | null;
@@ -49,7 +50,6 @@ export const useHomeAssistant = () => {
           }
         } catch (e) {
           // Cross-origin error, use default URL
-          console.log('Using default Home Assistant URL:', hassUrl);
         }
         
         // We have a long-lived token, so use it directly
@@ -64,6 +64,9 @@ export const useHomeAssistant = () => {
         auth = createLongLivedTokenAuth(hassUrl, token);
 
         const connection = await createConnection({ auth });
+
+        // Connect haStorage to the Home Assistant connection
+        haStorage.setConnection(connection);
 
         // Subscribe to entities
         unsubscribeEntities = subscribeEntities(connection, (entities) => {
@@ -83,7 +86,7 @@ export const useHomeAssistant = () => {
           const devices = await connection.sendMessagePromise(deviceMessage);
           setState((prev) => ({ ...prev, devices }));
         } catch (error) {
-          console.error('Failed to fetch device registry:', error);
+          // Failed to fetch device registry
         }
 
         // Fetch area registry
@@ -94,7 +97,7 @@ export const useHomeAssistant = () => {
           const areas = await connection.sendMessagePromise(areaMessage);
           setState((prev) => ({ ...prev, areas }));
         } catch (error) {
-          console.error('Failed to fetch area registry:', error);
+          // Failed to fetch area registry
         }
 
         setState((prev) => ({
@@ -107,7 +110,7 @@ export const useHomeAssistant = () => {
         }));
 
       } catch (error) {
-        console.error('Failed to connect to Home Assistant:', error);
+        // Failed to connect to Home Assistant
         setState((prev) => ({
           ...prev,
           error: error instanceof Error ? error.message : 'Unknown error',

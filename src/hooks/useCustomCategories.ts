@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { haStorage, STORAGE_KEYS } from '../services/haStorage';
 
 export interface CustomCategory {
   id: string;
@@ -10,27 +11,33 @@ export interface CustomCategory {
   createdAt: number;
 }
 
-const STORAGE_KEY = 'ha_custom_categories';
-
 export function useCustomCategories() {
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load from localStorage on mount
+  // Load from HA storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    const loadCategories = async () => {
       try {
-        setCustomCategories(JSON.parse(stored));
+        const stored = await haStorage.getItem(STORAGE_KEYS.CUSTOM_CATEGORIES);
+        if (stored) {
+          setCustomCategories(stored);
+        }
       } catch (e) {
-        console.error('Failed to parse custom categories:', e);
+        // Failed to load custom categories
+      } finally {
+        setIsLoading(false);
       }
-    }
+    };
+    loadCategories();
   }, []);
 
-  // Save to localStorage whenever customCategories changes
+  // Save to HA storage whenever customCategories changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(customCategories));
-  }, [customCategories]);
+    if (!isLoading) {
+      haStorage.setItem(STORAGE_KEYS.CUSTOM_CATEGORIES, customCategories);
+    }
+  }, [customCategories, isLoading]);
 
   const addCustomCategory = (name: string, icon: string, domains: string[]) => {
     const id = name.toLowerCase().replace(/\s+/g, '_');

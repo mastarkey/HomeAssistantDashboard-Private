@@ -1,5 +1,7 @@
 // Utility functions for filtering out sub-entities and identifying primary devices
 import { getDeviceForEntity, type Device } from './deviceRegistry';
+import { isCameraDetectionEntity, isCameraSubEntity } from './cameraDetectionHelpers';
+import { getDeviceTypeConfig } from '../config/deviceTypes';
 
 // Patterns that indicate a sub-entity or sensor that should be hidden from main view
 const SUB_ENTITY_PATTERNS = [
@@ -14,12 +16,13 @@ const SUB_ENTITY_PATTERNS = [
   // Privacy and system settings
   /_privacy_mode$/i,
   /_system_sounds$/i,
-  /_motion$/i,
+  // /_motion$/i,  // Commented out - this might filter legitimate motion sensors
   /_none$/i,
   
-  // Sensor suffixes
-  /_(power|energy|voltage|current|temperature|humidity|pressure|battery|rssi|signal_strength|linkquality)$/i,
-  /_(state|status|mode|last_seen|update|available)$/i,
+  // Sensor suffixes that indicate sub-entities (very specific to avoid filtering real devices)
+  /_(rssi|linkquality|last_seen|update_available)$/i,
+  // Temporarily commented to be less restrictive
+  // /_(wifi_signal|connectivity|reachable)$/i,
   
   // Media player sub-entities
   /_(source|volume|shuffle|repeat|play_mode|sound_mode)$/i,
@@ -28,7 +31,7 @@ const SUB_ENTITY_PATTERNS = [
   
   // Device info entities
   /_(firmware|software|hardware)_version$/i,
-  /_(ip_address|mac_address|wifi_signal)$/i,
+  /_(ip_address|mac_address)$/i,  // Removed wifi_signal as it was duplicate
   
   // Climate sub-entities
   /_(target_temp|current_temp|humidity|fan_mode|swing_mode|preset_mode)$/i,
@@ -51,11 +54,8 @@ const SUB_ENTITY_NAME_PATTERNS = [
   /show\s+(date|logo|name)/i,
   /privacy mode/i,
   /system sounds/i,
-  /firmware/i,
-  /connectivity/i,
-  /power usage/i,
-  /energy/i,
-  /battery/i,
+  /firmware\s+version/i,
+  /connectivity$/i,
   /signal strength/i,
   /rssi/i,
   /linkquality/i,
@@ -73,6 +73,14 @@ export function isPrimaryDevice(
   const friendlyName = entity.attributes?.friendly_name || '';
   const entityName = entityId.split('.')[1];
   
+  // DEBUG: Log sensor entities to see what's being filtered
+  if (domain === 'sensor' || domain === 'binary_sensor') {
+    if (entityId.toLowerCase().includes('tesla') || friendlyName.toLowerCase().includes('tesla') ||
+        entityId.toLowerCase().includes('wall_connector') || friendlyName.toLowerCase().includes('wall connector')) {
+      console.log(`[DEBUG] Checking Tesla sensor: ${entityId} (${friendlyName})`);
+    }
+  }
+  
   // Domains that should never show as cards
   const hiddenDomains = ['scene', 'automation', 'script', 'group', 'zone', 'person', 'sun', 'weather', 'event', 'remote'];
   if (hiddenDomains.includes(domain)) {
@@ -84,60 +92,91 @@ export function isPrimaryDevice(
   if (devices && allEntities) {
     const device = getDeviceForEntity(entityId, allEntities, devices);
     if (device) {
-      // Check if this device has a camera or other primary entity
-      const deviceEntities = Object.entries(allEntities)
-        .filter(([_, e]) => (e as any).attributes?.device_id === device.id)
-        .map(([id, e]) => ({ id, domain: id.split('.')[0], entity: e }));
-      
-      // If device has a camera, only the camera should be primary
-      const hasCamera = deviceEntities.some(e => e.domain === 'camera');
-      if (hasCamera && domain !== 'camera') {
-        return false;
-      }
-      
-      // If device has a media player (not from camera), only the media player should be primary
-      const hasMediaPlayer = deviceEntities.some(e => 
-        e.domain === 'media_player' && 
-        !e.id.includes('_camera') && 
-        !e.id.includes('_doorbell')
-      );
-      if (hasMediaPlayer && domain !== 'media_player') {
-        return false;
-      }
-      
-      // If this is a switch/sensor that belongs to a device with a primary entity, hide it
-      if ((domain === 'switch' || domain === 'sensor' || domain === 'binary_sensor')) {
-        const hasPrimaryEntity = deviceEntities.some(e => 
-          ['light', 'climate', 'cover', 'lock', 'fan', 'vacuum'].includes(e.domain)
-        );
-        if (hasPrimaryEntity) {
+      // Check if this device has a specific device type configuration
+      const deviceTypeConfig = getDeviceTypeConfig(device, allEntities, entityId);
+      if (deviceTypeConfig) {
+        // Check if this entity is one of the primary domains for this device type
+        const isPrimaryDomain = deviceTypeConfig.capabilities.domains.includes(domain);
+        if (!isPrimaryDomain) {
+          console.log(`[DEBUG] ${entityId} filtered - not primary domain for device type ${deviceTypeConfig.name}`);
           return false;
         }
+        
+        console.log(`[DEBUG] ${entityId} is primary domain for device type ${deviceTypeConfig.name}`);
+        // For recognized device types, show the primary entity
+        return true;
+      }
+      
+      // For sensors, we want to show them even if the device has other entity types
+      // Only filter out sub-entity sensors (those matching patterns)
+      if (domain === 'sensor' || domain === 'binary_sensor') {
+        // Don't filter sensors based on presence of other entity types
+        // Let them through to be checked by sub-entity patterns later
+        console.log(`[DEBUG] ${entityId} is sensor - skipping device entity filtering`);
+      } else {
+        // Check if this device has a camera or other primary entity
+        const deviceEntities = Object.entries(allEntities)
+          .filter(([_, e]) => (e as any).attributes?.device_id === device.id)
+          .map(([id, e]) => ({ id, domain: id.split('.')[0], entity: e }));
+        
+        // If device has a camera, only the camera should be primary (non-sensor)
+        const hasCamera = deviceEntities.some(e => e.domain === 'camera');
+        if (hasCamera && domain !== 'camera') {
+          console.log(`[DEBUG] ${entityId} filtered - device has camera`);
+          return false;
+        }
+        
+        // If device has a media player (not from camera), only the media player should be primary (non-sensor)
+        const hasMediaPlayer = deviceEntities.some(e => 
+          e.domain === 'media_player' && 
+          !e.id.includes('_camera') && 
+          !e.id.includes('_doorbell')
+        );
+        if (hasMediaPlayer && domain !== 'media_player') {
+          console.log(`[DEBUG] ${entityId} filtered - device has media player`);
+          return false;
+        }
+      }
+      
+      // Special handling for switches that are clearly sub-entities
+      if (domain === 'switch' && 
+          (entityName.includes('_led') || 
+           entityName.includes('_indicator') || 
+           entityName.includes('_child_lock'))) {
+        console.log(`[DEBUG] ${entityId} filtered - sub-entity switch`);
+        return false;
       }
     }
   }
   
-  // Only show actual hardware devices
-  const hardwareDeviceDomains = ['light', 'switch', 'climate', 'media_player', 'camera', 'lock', 'cover', 'fan', 'vacuum'];
+  // Show actual hardware devices and important sensors
+  // Include sensor and binary_sensor explicitly
+  const primaryDeviceDomains = ['light', 'switch', 'climate', 'media_player', 'camera', 'lock', 'cover', 'fan', 'vacuum', 'sensor', 'binary_sensor'];
   
-  if (hardwareDeviceDomains.includes(domain)) {
+  if (primaryDeviceDomains.includes(domain)) {
+    console.log(`[DEBUG] Evaluating ${domain}: ${entityId}`);
+    
+    // Check if this is a Tesla or Synology device - always show these
+    if (domain === 'switch' || domain === 'sensor') {
+      const lowerEntityId = entityId.toLowerCase();
+      const lowerName = friendlyName.toLowerCase();
+      if (lowerEntityId.includes('tesla') || lowerName.includes('tesla') ||
+          lowerEntityId.includes('synology') || lowerName.includes('synology') ||
+          lowerEntityId.includes('diskstation') || lowerName.includes('diskstation') ||
+          lowerEntityId.includes('wall_connector') || lowerName.includes('wall connector')) {
+        console.log(`[DEBUG] ${entityId} is Tesla/Synology device (${domain}) - showing`);
+        return true;
+      }
+    }
+    
     // Filter out automation switches
     if (domain === 'switch' && entityName.includes('automation')) {
       return false;
     }
     
-    // Filter out G6 and other camera motion/detection switches
-    if (domain === 'switch' && (
-        entityName.includes('g6_instant') ||
-        entityName.includes('g5_') ||
-        entityName.includes('g4_') ||
-        entityName.includes('g3_') ||
-        entityName.includes('_motion') ||
-        entityName.includes('_detected') ||
-        entityName.includes('_detections') ||
-        friendlyName.toLowerCase().includes('motion') ||
-        friendlyName.toLowerCase().includes('detected')
-    )) {
+    // Filter out camera detection entities using improved detection logic
+    const device = devices ? getDeviceForEntity(entityId, allEntities || {}, devices) : null;
+    if (isCameraDetectionEntity(entityId, entity, device) || isCameraSubEntity(entityId)) {
       return false;
     }
     
@@ -197,37 +236,57 @@ export function isPrimaryDevice(
     return true;
   }
   
-  // For sensors, only show main hardware sensors
+  // For sensors, show all primary sensor devices
   if (domain === 'binary_sensor' || domain === 'sensor') {
-    // Must be a standalone sensor device, not a sub-sensor
-    const standaloneSensorPatterns = [
-      /^motion$/i,
-      /^door$/i,
-      /^window$/i,
-      /^presence$/i,
-      /^occupancy$/i,
-      /^leak$/i,
-      /^smoke$/i,
-      /smoke_alarm/i,
-      /^carbon_monoxide$/i,
-    ];
+    console.log(`[DEBUG] Evaluating sensor: ${entityId}`);
     
-    // Check if it's clearly a sub-entity of another device
-    const isSubEntity = SUB_ENTITY_PATTERNS.some(pattern => pattern.test(entityId)) ||
-                       SUB_ENTITY_NAME_PATTERNS.some(pattern => pattern.test(friendlyName)) ||
-                       entityName.includes('_power') ||
-                       entityName.includes('_energy') ||
-                       entityName.includes('_battery') ||
-                       entityName.includes('_rssi') ||
-                       entityName.includes('_temperature') ||
-                       entityName.includes('_humidity');
+    // Check if this is a Tesla or Synology device - always show these
+    const lowerEntityId = entityId.toLowerCase();
+    const lowerName = friendlyName.toLowerCase();
+    if (lowerEntityId.includes('tesla') || lowerName.includes('tesla') ||
+        lowerEntityId.includes('synology') || lowerName.includes('synology') ||
+        lowerEntityId.includes('diskstation') || lowerName.includes('diskstation') ||
+        lowerEntityId.includes('wall_connector') || lowerName.includes('wall connector')) {
+      console.log(`[DEBUG] ${entityId} is Tesla/Synology device - showing`);
+      return true;
+    }
+    
+    // First check if it's clearly a sub-entity - these should always be filtered
+    const isSubEntity = SUB_ENTITY_PATTERNS.some(pattern => {
+      const matches = pattern.test(entityId);
+      if (matches) {
+        console.log(`[DEBUG] Sensor ${entityId} matches sub-entity pattern: ${pattern}`);
+      }
+      return matches;
+    });
     
     if (isSubEntity) {
+      console.log(`[DEBUG] Sensor ${entityId} filtered as sub-entity`);
       return false;
     }
     
-    // Only show if it matches a standalone sensor pattern
-    return standaloneSensorPatterns.some(pattern => pattern.test(friendlyName));
+    // Check if this is a primary energy monitoring or special device
+    if (devices && allEntities) {
+      const device = getDeviceForEntity(entityId, allEntities || {}, devices || null);
+      if (device) {
+        console.log(`[DEBUG] Sensor ${entityId} has device:`, device?.name || 'Unknown', device?.manufacturer || 'Unknown', device?.model || 'Unknown');
+        const deviceTypeConfig = getDeviceTypeConfig(device, allEntities || {}, entityId);
+        if (deviceTypeConfig) {
+          console.log(`[DEBUG] Sensor ${entityId} matched device type: ${deviceTypeConfig?.name || 'Unknown'}`);
+          // This is a recognized device type, show it
+          return true;
+        }
+        
+        // Even if no device type config, if it's not a sub-entity and is a sensor, show it
+        console.log(`[DEBUG] Sensor ${entityId} has device but no type config - showing anyway`);
+        return true;
+      }
+    }
+    
+    // No device association, but it's a sensor that's not a sub-entity - show it
+    console.log(`[DEBUG] Sensor ${entityId} has no device - showing as standalone sensor`);
+    // Show primary sensors that don't match sub-entity patterns
+    return true;
   }
   
   // Hide everything else

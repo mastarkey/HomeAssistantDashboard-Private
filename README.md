@@ -114,9 +114,33 @@ This is within the Home Assistant config directory, which maps to `/config` in t
 - ✅ **Activity Log**: Recent device events and state changes
 - ✅ **Climate History**: Temperature charts and state change logs
 
+### Specialized Device Support
+- ⚡ **EV Chargers**
+  - Real-time charging status with animated indicators
+  - Power consumption display (kW/W)
+  - Energy delivered tracking
+  - Charging session information
+  - Vehicle connection status
+  - Smart power management controls
+  
+- 💾 **NAS Devices** (Synology, QNAP, etc.)
+  - Storage usage visualization
+  - CPU and memory monitoring
+  - Temperature display
+  - Disk health status
+  - Network activity indicators
+  - System uptime tracking
+  
+- 🔌 **Energy Monitors** (Sense, etc.)
+  - Real-time power consumption
+  - Historical usage graphs
+  - Device-level monitoring
+  - Cost calculations
+  - Peak usage alerts
+
 ### Organization & Customization
 - ✅ **Drag-and-Drop Reordering**: Reorganize rooms, categories, and devices
-- ✅ **Persistent Layout**: Card order saved in browser storage
+- ✅ **Persistent Layout**: Card order saved using Home Assistant's frontend storage API
 - ✅ **Visual Feedback**: Drag handles appear on hover
 - ✅ **Room Management**: 
   - Add custom rooms with icon selection
@@ -129,10 +153,10 @@ This is within the Home Assistant config directory, which maps to `/config` in t
   - Delete unused categories
 - ✅ **Device Management**:
   - Add devices from Home Assistant to rooms
-  - Create custom devices not in Home Assistant
   - Edit device room assignments
   - Move devices between rooms
   - Search and filter unassigned devices
+  - Dynamic device discovery with pattern-based detection
 
 ## 🛠️ Technology Stack
 
@@ -171,7 +195,9 @@ This is within the Home Assistant config directory, which maps to `/config` in t
 │   │       ├── SensorCard.tsx    # Sensor value display
 │   │       ├── CoverCard.tsx     # Blinds/curtains control
 │   │       ├── LockCard.tsx      # Lock/unlock controls
-│   │       └── FanCard.tsx       # Fan speed and oscillation
+│   │       ├── FanCard.tsx       # Fan speed and oscillation
+│   │       ├── EVChargerCard.tsx # EV charger status and controls
+│   │       └── NASCard.tsx       # NAS monitoring and stats
 │   ├── hooks/
 │   │   ├── useHomeAssistant.ts   # WebSocket connection and device registry
 │   │   ├── useOrderStorage.ts    # Persist drag-and-drop order in localStorage
@@ -186,7 +212,12 @@ This is within the Home Assistant config directory, which maps to `/config` in t
 │   │   ├── deviceFiltering.ts    # Smart filtering for primary devices
 │   │   ├── deduplicateEntities.ts # Remove duplicate entities
 │   │   ├── deviceRegistry.ts     # Device registry integration
+│   │   ├── cameraDetectionHelpers.ts # Camera entity detection logic
 │   │   └── unassignedDevices.ts  # Find devices not assigned to rooms
+│   ├── services/
+│   │   └── haStorage.ts          # Home Assistant frontend storage API
+│   ├── config/
+│   │   └── deviceTypes.ts        # Device type configurations
 │   ├── types/                    # TypeScript type definitions
 │   ├── App.tsx                   # Root application component
 │   ├── main.tsx                  # Application entry point
@@ -346,7 +377,16 @@ The dashboard connects to Home Assistant using:
 
 ## 🚧 Recent Updates
 
-### Version 2.0 (Latest)
+### Version 2.1 (Latest)
+- ✅ **HA Storage Integration**: Replaced browser localStorage with Home Assistant's frontend storage API
+- ✅ **Specialized Device Cards**: Added dedicated cards for EV Chargers and NAS devices
+- ✅ **Enhanced Device Discovery**: Dynamic pattern-based detection for Tesla, Synology, and other devices
+- ✅ **Improved Camera Detection**: Better filtering of camera sub-entities using device registry
+- ✅ **Media Player Enhancements**: Device type detection (TV, Speaker, etc.) with custom icons
+- ✅ **Vacuum Card**: Interactive controls and status visualization
+- ✅ **Bug Fixes**: Removed all console.log statements for cleaner production code
+
+### Version 2.0
 - ✅ **Room and Category Management**: Add/delete custom rooms and categories
 - ✅ **Enhanced Device Assignment**: Move devices between rooms with visual interface
 - ✅ **Climate Card Overhaul**: Quick mode controls, temperature history charts
@@ -354,19 +394,49 @@ The dashboard connects to Home Assistant using:
 - ✅ **Room Normalization**: Fixed duplicate room issues (e.g., "dining room" vs "dining_room")
 - ✅ **Edit Device Functionality**: Edit room assignments and device names
 - ✅ **Hidden Rooms**: Hide empty rooms to declutter interface
-- ✅ **Custom Device Support**: Add devices that don't exist in Home Assistant
 - ✅ **Drag-and-Drop Everything**: Reorder rooms, categories, and devices
+
+## 🚧 Known Issues & Debugging
+
+### Current Issues Being Investigated:
+1. **Tesla Charger Assignment**: Devices may not appear in rooms after assignment
+   - Check console for `[DEBUG] filterEntitiesByRoomWithOverrides` logs
+   - Verify entity overrides are saved correctly
+
+2. **Device Count Mismatch**: Different counts shown in room view vs Add Device modal
+   - May be due to filtering differences between views
+   - Check console for entity filtering logs
+
+3. **Drag & Drop Persistence**: Card positions may reset after page refresh
+   - Verify HA storage is working (check Network tab)
+   - Check console for order save/load operations
+
+### Debug Commands (Browser Console):
+```javascript
+// Check Tesla entities
+Object.entries(window.__HA_ENTITIES__ || {}).filter(([id]) => 
+  id.includes('tesla') || id.includes('wall_connector')
+).forEach(([id, e]) => console.log(id, e.attributes?.friendly_name))
+
+// Check entity overrides
+localStorage.getItem('react_dashboard_entity_overrides')
+
+// Check saved card order
+localStorage.getItem('react_dashboard_card_order')
+```
 
 ## 🚧 Roadmap
 
 Future enhancements planned:
 - [ ] Custom themes and color schemes
-- [ ] Energy monitoring dashboard
+- [ ] Energy monitoring dashboard with historical graphs
 - [ ] Automation creation interface
 - [ ] Mobile app wrapper
 - [ ] Device grouping and scenes
 - [ ] Notification center
 - [ ] Voice control integration
+- [ ] Multi-dashboard support
+- [ ] Widget system for custom cards
 
 ## 🤝 Contributing
 

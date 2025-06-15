@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { haStorage, STORAGE_KEYS } from '../services/haStorage';
 
 export interface CustomRoom {
   id: string;
@@ -8,27 +9,33 @@ export interface CustomRoom {
   createdAt: number;
 }
 
-const STORAGE_KEY = 'ha_custom_rooms';
-
 export function useCustomRooms() {
   const [customRooms, setCustomRooms] = useState<CustomRoom[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load from localStorage on mount
+  // Load from HA storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    const loadRooms = async () => {
       try {
-        setCustomRooms(JSON.parse(stored));
+        const stored = await haStorage.getItem(STORAGE_KEYS.CUSTOM_ROOMS);
+        if (stored) {
+          setCustomRooms(stored);
+        }
       } catch (e) {
-        console.error('Failed to parse custom rooms:', e);
+        // Failed to load custom rooms
+      } finally {
+        setIsLoading(false);
       }
-    }
+    };
+    loadRooms();
   }, []);
 
-  // Save to localStorage whenever customRooms changes
+  // Save to HA storage whenever customRooms changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(customRooms));
-  }, [customRooms]);
+    if (!isLoading && customRooms.length >= 0) {
+      haStorage.setItem(STORAGE_KEYS.CUSTOM_ROOMS, customRooms);
+    }
+  }, [customRooms, isLoading]);
 
   const addCustomRoom = (name: string, icon?: string) => {
     const id = name.toLowerCase().replace(/\s+/g, '_');

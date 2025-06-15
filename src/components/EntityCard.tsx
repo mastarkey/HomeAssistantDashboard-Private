@@ -22,6 +22,14 @@ import SensorCard from './cards/SensorCard';
 import CoverCard from './cards/CoverCard';
 import LockCard from './cards/LockCard';
 import FanCard from './cards/FanCard';
+import VacuumCard from './cards/VacuumCard';
+import EVChargerCard from './cards/EVChargerCard';
+import NASCard from './cards/NASCard';
+import GenericDeviceCard from './cards/GenericDeviceCard';
+
+// Import device type detection
+import { getDeviceForEntity } from '../utils/deviceRegistry';
+import { getDeviceTypeConfig } from '../config/deviceTypes';
 
 interface EntityCardProps {
   entityId: string;
@@ -32,33 +40,63 @@ interface EntityCardProps {
 }
 
 const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
+  const { entities, devices } = useHomeAssistant();
   const domain = entityId.split('.')[0];
   
-  // Use specialized cards for specific domains
+  // Try to detect device type from device registry or entity patterns
+  const device = devices && entities ? getDeviceForEntity(entityId, entities, devices) : null;
+  const deviceTypeConfig = getDeviceTypeConfig(device, entities || { [entityId]: entity }, entityId);
+  
+  // If we have a device type configuration, check if we have a specialized card for it
+  if (deviceTypeConfig) {
+    // Use specialized cards for specific device types
+    switch (deviceTypeConfig.id) {
+      case 'ev_charger':
+        return <EVChargerCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      case 'nas':
+        return <NASCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      default:
+        // Use generic device card for other device types
+        return (
+          <GenericDeviceCard 
+            entityId={entityId} 
+            entity={entity} 
+            deviceType={deviceTypeConfig}
+            onEntityUpdate={onEntityUpdate} 
+            rooms={rooms || []} 
+            isCustom={isCustom} 
+          />
+        );
+    }
+  }
+  
+  // Fall back to specialized cards for specific domains
   switch (domain) {
     case 'climate':
-      return <ClimateCard entityId={entityId} entity={entity} />;
+      return <ClimateCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'weather':
-      return <WeatherCard entityId={entityId} entity={entity} />;
+      return <WeatherCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'media_player':
-      return <MediaPlayerCard entityId={entityId} entity={entity} />;
+      return <MediaPlayerCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'light':
       return <LightCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'camera':
-      return <CameraCard entityId={entityId} entity={entity} />;
+      return <CameraCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'switch':
       return <SwitchCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'sensor':
     case 'binary_sensor':
-      return <SensorCard entityId={entityId} entity={entity} />;
+      return <SensorCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'cover':
-      return <CoverCard entityId={entityId} entity={entity} />;
+      return <CoverCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'lock':
-      return <LockCard entityId={entityId} entity={entity} />;
+      return <LockCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     case 'fan':
-      return <FanCard entityId={entityId} entity={entity} />;
+      return <FanCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+    case 'vacuum':
+      return <VacuumCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
     default:
-      // Fall back to generic card for other domains
+      // Fall back to generic entity card for other domains
       return <GenericEntityCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
   }
 };

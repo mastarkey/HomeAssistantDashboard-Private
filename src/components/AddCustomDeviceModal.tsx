@@ -27,6 +27,16 @@ const deviceTypes = [
   { id: 'binary_sensor', name: 'Motion Sensor', icon: <Shield className="w-6 h-6" />, defaultState: 'off' },
   { id: 'humidity', name: 'Humidity Sensor', icon: <Droplets className="w-6 h-6" />, defaultState: '50' },
   { id: 'temperature', name: 'Temperature Sensor', icon: <Wind className="w-6 h-6" />, defaultState: '20' },
+  // New device types
+  { id: 'energy_monitor', name: 'Energy Monitor', icon: <Activity className="w-6 h-6" />, defaultState: '0', domain: 'sensor' },
+  { id: 'smart_plug_energy', name: 'Smart Plug with Energy', icon: <Power className="w-6 h-6" />, defaultState: 'off', domain: 'switch' },
+  { id: 'nas', name: 'NAS', icon: <Shield className="w-6 h-6" />, defaultState: 'on', domain: 'sensor' },
+  { id: 'ev_charger', name: 'EV Charger', icon: <Power className="w-6 h-6" />, defaultState: 'idle', domain: 'sensor' },
+  { id: 'solar_inverter', name: 'Solar Inverter', icon: <Activity className="w-6 h-6" />, defaultState: '0', domain: 'sensor' },
+  { id: 'battery_storage', name: 'Battery Storage', icon: <Activity className="w-6 h-6" />, defaultState: '50', domain: 'sensor' },
+  { id: 'smart_meter', name: 'Smart Meter', icon: <Activity className="w-6 h-6" />, defaultState: '0', domain: 'sensor' },
+  { id: 'ups', name: 'UPS', icon: <Shield className="w-6 h-6" />, defaultState: '100', domain: 'sensor' },
+  { id: 'network_device', name: 'Network Device', icon: <Shield className="w-6 h-6" />, defaultState: 'on', domain: 'sensor' },
 ];
 
 const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ onClose, onAdd, rooms }) => {
@@ -56,6 +66,7 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ onClose, onAdd, rooms }
 
     let attributes: Record<string, any> = {
       friendly_name: deviceName,
+      device_type: selectedType, // Store the specific device type
     };
 
     // Add type-specific attributes
@@ -90,13 +101,64 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ onClose, onAdd, rooms }
           (selectedType === 'temperature' ? '°C' : 
            selectedType === 'humidity' ? '%' : '');
         break;
+      case 'energy_monitor':
+      case 'smart_meter':
+        attributes.unit_of_measurement = 'W';
+        attributes.device_class = 'power';
+        attributes.state_class = 'measurement';
+        break;
+      case 'smart_plug_energy':
+        attributes.device_class = 'outlet';
+        attributes.power_monitoring = true;
+        break;
+      case 'nas':
+        attributes.device_class = 'connectivity';
+        attributes.disk_usage = 45;
+        attributes.temperature = 35;
+        attributes.cpu_usage = 25;
+        attributes.memory_usage = 60;
+        break;
+      case 'ev_charger':
+        attributes.device_class = 'power';
+        attributes.max_current = 32;
+        attributes.charging_status = 'idle';
+        attributes.vehicle_connected = false;
+        break;
+      case 'solar_inverter':
+        attributes.device_class = 'power';
+        attributes.unit_of_measurement = 'W';
+        attributes.energy_today = 12.5;
+        attributes.energy_total = 4500;
+        break;
+      case 'battery_storage':
+        attributes.device_class = 'battery';
+        attributes.battery_level = parseInt(sensorValue) || 50;
+        attributes.capacity = 13.5; // kWh
+        attributes.power_flow = 0;
+        break;
+      case 'ups':
+        attributes.device_class = 'battery';
+        attributes.battery_charge = parseInt(sensorValue) || 100;
+        attributes.load_percentage = 15;
+        attributes.runtime_remaining = 45;
+        break;
+      case 'network_device':
+        attributes.device_class = 'connectivity';
+        attributes.clients_connected = 12;
+        attributes.bandwidth_usage = 250;
+        attributes.uptime = 86400 * 7; // 7 days
+        break;
     }
 
+    const selectedDeviceType = deviceTypes.find(d => d.id === selectedType);
+    const domain = selectedDeviceType?.domain || (selectedType === 'tv' ? 'media_player' : selectedType);
+    
     onAdd({
       name: deviceName,
-      type: selectedType === 'tv' ? 'media_player' : selectedType,
+      type: domain,
       room: selectedRoom,
-      state: selectedType === 'sensor' || selectedType === 'temperature' || selectedType === 'humidity' 
+      state: selectedType === 'sensor' || selectedType === 'temperature' || selectedType === 'humidity' || 
+             ['energy_monitor', 'nas', 'ev_charger', 'solar_inverter', 'battery_storage', 'smart_meter', 'ups', 'network_device'].includes(selectedType)
         ? sensorValue 
         : selectedDevice.defaultState,
       attributes,
@@ -110,7 +172,7 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ onClose, onAdd, rooms }
       <div className="bg-gray-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-800">
-          <h2 className="text-2xl font-semibold text-white">Add New Device</h2>
+          <h2 className="text-2xl font-semibold text-white">Create Virtual Device</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"

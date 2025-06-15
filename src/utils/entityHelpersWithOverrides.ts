@@ -66,18 +66,34 @@ export function filterEntitiesByRoomWithOverrides(
   roomId: string,
   getEffectiveRoom?: (entityId: string, defaultRoom?: string) => string
 ): [string, any][] {
-  return Object.entries(entities).filter(([entityId, entity]) => {
+  console.log(`[DEBUG] filterEntitiesByRoomWithOverrides called for room: ${roomId}`);
+  
+  const results = Object.entries(entities).filter(([entityId, entity]) => {
     let room: string;
     
     if (getEffectiveRoom) {
       const defaultRoom = getRoomFromEntity(entity);
       room = getEffectiveRoom(entityId, defaultRoom);
+      
+      // Log Tesla entities specifically
+      if (entityId.toLowerCase().includes('tesla') || entityId.toLowerCase().includes('wall_connector')) {
+        console.log(`[DEBUG] Tesla entity ${entityId}: defaultRoom=${defaultRoom}, effectiveRoom=${room}`);
+      }
     } else {
       room = getRoomFromEntity(entity);
     }
     
     // Normalize both the room and roomId for comparison
     const normalizedRoom = room.toLowerCase().replace(/[\s_]+/g, '_');
-    return normalizedRoom === roomId;
+    const matches = normalizedRoom === roomId;
+    
+    if (roomId === 'garage' && matches) {
+      console.log(`[DEBUG] Entity ${entityId} matches garage: room=${room}, normalizedRoom=${normalizedRoom}`);
+    }
+    
+    return matches;
   });
+  
+  console.log(`[DEBUG] filterEntitiesByRoomWithOverrides found ${results.length} entities for room ${roomId}`);
+  return results;
 }

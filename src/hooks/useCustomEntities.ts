@@ -1,6 +1,7 @@
 // Hook for managing custom user-added entities
 
 import { useState, useEffect } from 'react';
+import { haStorage, STORAGE_KEYS } from '../services/haStorage';
 
 export interface CustomEntity {
   id: string;
@@ -13,24 +14,32 @@ export interface CustomEntity {
   createdAt: number;
 }
 
-const STORAGE_KEY = 'ha-dashboard-custom-entities';
-
 export function useCustomEntities() {
-  const [customEntities, setCustomEntities] = useState<Record<string, CustomEntity>>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+  const [customEntities, setCustomEntities] = useState<Record<string, CustomEntity>>({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load from HA storage on mount
+  useEffect(() => {
+    const loadEntities = async () => {
       try {
-        return JSON.parse(stored);
+        const stored = await haStorage.getItem(STORAGE_KEYS.CUSTOM_ENTITIES);
+        if (stored) {
+          setCustomEntities(stored);
+        }
       } catch (e) {
-        console.error('Failed to parse custom entities:', e);
+        // Failed to load custom entities
+      } finally {
+        setIsLoading(false);
       }
-    }
-    return {};
-  });
+    };
+    loadEntities();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(customEntities));
-  }, [customEntities]);
+    if (!isLoading) {
+      haStorage.setItem(STORAGE_KEYS.CUSTOM_ENTITIES, customEntities);
+    }
+  }, [customEntities, isLoading]);
 
   const addCustomEntity = (entity: Omit<CustomEntity, 'id' | 'createdAt' | 'isCustom'>) => {
     const id = `custom.${entity.type}_${Date.now()}`;

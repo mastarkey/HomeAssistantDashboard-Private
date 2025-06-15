@@ -7,9 +7,12 @@ import CameraImage from '../CameraImage';
 interface CameraCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const CameraCard: React.FC<CameraCardProps> = ({ entityId, entity }) => {
+const CameraCard: React.FC<CameraCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { config } = useHomeAssistant();
   const [showModal, setShowModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -80,6 +83,9 @@ const CameraCard: React.FC<CameraCardProps> = ({ entityId, entity }) => {
           entity={entity}
           onClose={() => setShowModal(false)}
           initialRefreshKey={refreshKey}
+          onEntityUpdate={onEntityUpdate}
+          rooms={rooms}
+          isCustom={isCustom}
         />
       )}
     </>

@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
-import { Fan, Power, Wind } from 'lucide-react';
+import { Fan, Power, Wind, MoreVertical } from 'lucide-react';
+import EditDeviceModal from '../EditDeviceModal';
 
 interface FanCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const FanCard: React.FC<FanCardProps> = ({ entityId, entity }) => {
+const FanCard: React.FC<FanCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -58,7 +63,8 @@ const FanCard: React.FC<FanCardProps> = ({ entityId, entity }) => {
   };
   
   return (
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+    <>
+    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${isOn ? 'bg-green-500' : 'bg-gray-600'}`}></div>
@@ -67,8 +73,19 @@ const FanCard: React.FC<FanCardProps> = ({ entityId, entity }) => {
             <p className="text-xs text-gray-500">{getSpeedText()}</p>
           </div>
         </div>
-        <div className={`transition-all duration-1000 ${isOn ? 'animate-spin' : ''}`}>
-          <Fan className={`w-6 h-6 ${isOn ? 'text-purple-400' : 'text-gray-400'}`} />
+        <div className="flex items-center gap-2">
+          <div className={`transition-all duration-1000 ${isOn ? 'animate-spin' : ''}`}>
+            <Fan className={`w-6 h-6 ${isOn ? 'text-purple-400' : 'text-gray-400'}`} />
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowEditModal(true);
+            }}
+            className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <MoreVertical className="w-4 h-4 text-gray-400" />
+          </button>
         </div>
       </div>
       
@@ -125,6 +142,18 @@ const FanCard: React.FC<FanCardProps> = ({ entityId, entity }) => {
         <span className="text-xs text-gray-500 uppercase tracking-wider">FAN</span>
       </div>
     </div>
+    
+    {showEditModal && onEntityUpdate && (
+      <EditDeviceModal
+        entityId={entityId}
+        entity={entity}
+        onClose={() => setShowEditModal(false)}
+        onSave={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
+      />
+    )}
+    </>
   );
 };
 

@@ -1,6 +1,7 @@
-// Hook for managing card order persistence in localStorage
+// Hook for managing card order persistence in HA storage
 
 import { useState, useEffect } from 'react';
+import { haStorage, STORAGE_KEYS } from '../services/haStorage';
 
 interface OrderStorage {
   rooms: string[];
@@ -8,28 +9,36 @@ interface OrderStorage {
   devices: Record<string, string[]>; // roomId/categoryId -> entityIds
 }
 
-const STORAGE_KEY = 'ha-dashboard-order';
-
 export function useOrderStorage() {
-  const [order, setOrder] = useState<OrderStorage>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {
-        console.error('Failed to parse stored order:', e);
-      }
-    }
-    return {
-      rooms: [],
-      categories: [],
-      devices: {}
-    };
+  const [order, setOrder] = useState<OrderStorage>({
+    rooms: [],
+    categories: [],
+    devices: {}
   });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load from HA storage on mount
+  useEffect(() => {
+    const loadOrder = async () => {
+      try {
+        const stored = await haStorage.getItem(STORAGE_KEYS.CARD_ORDER);
+        if (stored) {
+          setOrder(stored);
+        }
+      } catch (e) {
+        // Failed to load order
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadOrder();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
-  }, [order]);
+    if (!isLoading) {
+      haStorage.setItem(STORAGE_KEYS.CARD_ORDER, order);
+    }
+  }, [order, isLoading]);
 
   const updateRoomOrder = (newOrder: string[]) => {
     setOrder(prev => ({ ...prev, rooms: newOrder }));
@@ -40,13 +49,18 @@ export function useOrderStorage() {
   };
 
   const updateDeviceOrder = (roomOrCategoryId: string, newOrder: string[]) => {
-    setOrder(prev => ({
-      ...prev,
-      devices: {
-        ...prev.devices,
-        [roomOrCategoryId]: newOrder
-      }
-    }));
+    console.log('[DEBUG] updateDeviceOrder:', { roomOrCategoryId, newOrder });
+    setOrder(prev => {
+      const newState = {
+        ...prev,
+        devices: {
+          ...prev.devices,
+          [roomOrCategoryId]: newOrder
+        }
+      };
+      console.log('[DEBUG] New order state:', newState);
+      return newState;
+    });
   };
 
   const getRoomOrder = (rooms: any[]): any[] => {
@@ -89,6 +103,8 @@ export function useOrderStorage() {
 
   const getDeviceOrder = (roomOrCategoryId: string, devices: [string, any][]): [string, any][] => {
     const savedOrder = order.devices[roomOrCategoryId];
+    console.log('[DEBUG] getDeviceOrder:', { roomOrCategoryId, savedOrder, devicesCount: devices.length });
+    
     if (!savedOrder || savedOrder.length === 0) return devices;
     
     const orderedDevices = [...devices];
@@ -104,6 +120,7 @@ export function useOrderStorage() {
       return aIndex - bIndex;
     });
     
+    console.log('[DEBUG] Ordered devices:', orderedDevices.map(d => d[0]));
     return orderedDevices;
   };
 

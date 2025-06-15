@@ -1,12 +1,17 @@
-import React from 'react';
-import { Cloud, CloudRain, CloudSnow, Sun, CloudDrizzle, Zap, Wind, Droplets, Eye } from 'lucide-react';
+import React, { useState } from 'react';
+import { Cloud, CloudRain, CloudSnow, Sun, CloudDrizzle, Zap, Wind, Droplets, Eye, MoreVertical } from 'lucide-react';
+import EditDeviceModal from '../EditDeviceModal';
 
 interface WeatherCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity }) => {
+const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+  const [showEditModal, setShowEditModal] = useState(false);
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
   const attributes = entity.attributes || {};
@@ -44,6 +49,7 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity }) => {
   };
   
   return (
+    <>
     <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
@@ -51,8 +57,21 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity }) => {
           <h3 className="text-white font-medium text-lg">{friendlyName}</h3>
           <p className="text-sm text-gray-400 capitalize">{state}</p>
         </div>
-        <div className="text-blue-400">
-          {getWeatherIcon(state)}
+        <div className="flex items-center gap-2">
+          <div className="text-blue-400">
+            {getWeatherIcon(state)}
+          </div>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowEditModal(true);
+              }}
+              className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+            >
+              <MoreVertical className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
         </div>
       </div>
       
@@ -118,6 +137,18 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity }) => {
         <span className="text-xs text-gray-500 uppercase tracking-wider">WEATHER</span>
       </div>
     </div>
+    
+    {showEditModal && onEntityUpdate && (
+      <EditDeviceModal
+        entityId={entityId}
+        entity={entity}
+        onClose={() => setShowEditModal(false)}
+        onSave={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
+      />
+    )}
+    </>
   );
 };
 

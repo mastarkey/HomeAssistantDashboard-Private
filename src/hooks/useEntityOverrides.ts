@@ -1,6 +1,7 @@
 // Hook for managing entity overrides (room assignments, names, etc.)
 
 import { useState, useEffect } from 'react';
+import { haStorage, STORAGE_KEYS } from '../services/haStorage';
 
 export interface EntityOverride {
   entityId: string;
@@ -9,24 +10,32 @@ export interface EntityOverride {
   hidden?: boolean;
 }
 
-const STORAGE_KEY = 'ha-dashboard-entity-overrides';
-
 export function useEntityOverrides() {
-  const [overrides, setOverrides] = useState<Record<string, EntityOverride>>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+  const [overrides, setOverrides] = useState<Record<string, EntityOverride>>({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load from HA storage on mount
+  useEffect(() => {
+    const loadOverrides = async () => {
       try {
-        return JSON.parse(stored);
+        const stored = await haStorage.getItem(STORAGE_KEYS.ENTITY_OVERRIDES);
+        if (stored) {
+          setOverrides(stored);
+        }
       } catch (e) {
-        console.error('Failed to parse entity overrides:', e);
+        // Failed to load entity overrides
+      } finally {
+        setIsLoading(false);
       }
-    }
-    return {};
-  });
+    };
+    loadOverrides();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
-  }, [overrides]);
+    if (!isLoading) {
+      haStorage.setItem(STORAGE_KEYS.ENTITY_OVERRIDES, overrides);
+    }
+  }, [overrides, isLoading]);
 
   const setEntityOverride = (entityId: string, override: Partial<EntityOverride>) => {
     setOverrides(prev => ({

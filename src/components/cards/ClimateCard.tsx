@@ -6,9 +6,12 @@ import ClimateModal from '../ClimateModal';
 interface ClimateCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
+const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService } = useHomeAssistant();
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -89,20 +92,6 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
     }
   };
   
-  const cycleHvacMode = async () => {
-    const modes = attributes.hvac_modes || ['off', 'heat', 'cool'];
-    const currentIndex = modes.indexOf(hvacMode);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    
-    try {
-      await callService('climate', 'set_hvac_mode', {
-        entity_id: entityId,
-        hvac_mode: modes[nextIndex]
-      });
-    } catch (error) {
-      console.error('Failed to change HVAC mode:', error);
-    }
-  };
   
   return (
     <>
@@ -284,6 +273,9 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity }) => {
         entityId={entityId}
         entity={entity}
         onClose={() => setShowModal(false)}
+        onEntityUpdate={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
       />
     )}
     </>

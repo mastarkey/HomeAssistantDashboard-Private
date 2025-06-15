@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
-import { ChevronUp, ChevronDown, Pause, Sun } from 'lucide-react';
+import { ChevronUp, ChevronDown, Pause, Sun, MoreVertical } from 'lucide-react';
+import EditDeviceModal from '../EditDeviceModal';
 
 interface CoverCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const CoverCard: React.FC<CoverCardProps> = ({ entityId, entity }) => {
+const CoverCard: React.FC<CoverCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -56,13 +61,25 @@ const CoverCard: React.FC<CoverCardProps> = ({ entityId, entity }) => {
   };
   
   return (
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+    <>
+    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
           <span className="text-white font-medium">{friendlyName}</span>
         </div>
-        <Sun className="w-5 h-5 text-gray-400" />
+        <div className="flex items-center gap-2">
+          <Sun className="w-5 h-5 text-gray-400" />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowEditModal(true);
+            }}
+            className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <MoreVertical className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
       </div>
       
       <div className="mb-4">
@@ -125,6 +142,18 @@ const CoverCard: React.FC<CoverCardProps> = ({ entityId, entity }) => {
         <span className="text-xs text-gray-500 uppercase tracking-wider">COVER</span>
       </div>
     </div>
+    
+    {showEditModal && onEntityUpdate && (
+      <EditDeviceModal
+        entityId={entityId}
+        entity={entity}
+        onClose={() => setShowEditModal(false)}
+        onSave={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
+      />
+    )}
+    </>
   );
 };
 

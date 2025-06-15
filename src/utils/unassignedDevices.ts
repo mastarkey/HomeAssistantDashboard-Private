@@ -1,30 +1,47 @@
 import { filterPrimaryDevices } from './deviceFiltering';
+import { isCameraDetectionEntity } from './cameraDetectionHelpers';
 
-export function getUnassignedDevices(
+export function getAllAvailableDevices(
   entities: any,
-  devices: any[] | null,
-  getEffectiveRoom?: (entityId: string, defaultRoom?: string) => string
+  devices: any[] | null
 ): [string, any][] {
   if (!entities) return [];
   
   // Get all entities as array
   const allEntities = Object.entries(entities);
+  console.log(`[DEBUG] Total entities: ${allEntities.length}`);
+  
+  // Count sensors before filtering
+  const sensorCount = allEntities.filter(([id]) => id.startsWith('sensor.')).length;
+  const binarySensorCount = allEntities.filter(([id]) => id.startsWith('binary_sensor.')).length;
+  console.log(`[DEBUG] Sensors before filtering: ${sensorCount} sensors, ${binarySensorCount} binary_sensors`);
   
   // Filter to primary devices only
   const primaryDevices = filterPrimaryDevices(allEntities, devices, entities);
+  console.log(`[DEBUG] Primary devices after filtering: ${primaryDevices.length}`);
   
-  // Filter devices that are in "other" room or have no room assigned
-  const unassigned = primaryDevices.filter(([entityId, entity]) => {
-    const room = getEffectiveRoom ? getEffectiveRoom(entityId, 'other') : 'other';
-    
-    // Check if entity has a room assignment from friendly name
-    const friendlyName = entity.attributes?.friendly_name || '';
-    const hasRoomInName = friendlyName.match(/^(bedroom|bathroom|kitchen|living room|garage|hallway|entryway|office|basement|attic|dining room|laundry room|closet|pantry|foyer|mudroom|sunroom|den|library|gym|master bedroom|guest bedroom|kids room|nursery|playroom|media room|game room|front patio|back patio|driveway|backyard|front yard|porch|deck|balcony|pool|shed|workshop|studio|loft|utility room)/i);
-    
-    return room === 'other' && !hasRoomInName;
+  // Count sensors after filtering
+  const primarySensorCount = primaryDevices.filter(([id]) => id.startsWith('sensor.')).length;
+  const primaryBinarySensorCount = primaryDevices.filter(([id]) => id.startsWith('binary_sensor.')).length;
+  console.log(`[DEBUG] Sensors after filtering: ${primarySensorCount} sensors, ${primaryBinarySensorCount} binary_sensors`);
+  
+  // Filter out camera detection entities
+  const availableDevices = primaryDevices.filter(([entityId, entity]) => {
+    return !isCameraDetectionEntity(entityId, entity, devices);
   });
+  console.log(`[DEBUG] Available devices after camera filtering: ${availableDevices.length}`);
   
-  return unassigned;
+  // Log domain breakdown
+  const domainCounts: Record<string, number> = {};
+  availableDevices.forEach(([entityId]) => {
+    const domain = entityId.split('.')[0];
+    domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+  });
+  console.log('[DEBUG] Available devices by domain:', domainCounts);
+  
+  // Return all primary devices (not just unassigned ones)
+  // This allows users to reassign devices to different rooms
+  return availableDevices;
 }
 
 export function groupDevicesByDomain(devices: [string, any][]): Record<string, [string, any][]> {

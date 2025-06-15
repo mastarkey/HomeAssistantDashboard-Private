@@ -1,9 +1,11 @@
 // Helper functions for entity organization
+import type { Device, Area } from './deviceRegistry';
 
 export interface Room {
   id: string;
   name: string;
   entityCount: number;
+  areaId?: string; // Reference to Home Assistant area
 }
 
 export interface DeviceCategory {
@@ -45,6 +47,27 @@ const excludedWords = [
   'fridge', 'coffee', 'dream', 'mini', 'center', 'lennox', 'irobot',
   'instapot', 'always', 'sun', 'electric', 'sense', 'matthew'
 ];
+
+// Get area name for an entity using device registry and area assignments
+export function getAreaForEntity(
+  entityId: string,
+  entities: Record<string, any>,
+  devices: Device[] | null,
+  areas: Area[] | null
+): string | null {
+  if (!entities || !devices || !areas) return null;
+  
+  const entity = entities[entityId];
+  if (!entity?.attributes?.device_id) return null;
+  
+  // Find the device for this entity
+  const device = devices.find(d => d.id === entity.attributes.device_id);
+  if (!device || !device.area_id) return null;
+  
+  // Find the area for this device
+  const area = areas.find(a => a.area_id === device.area_id);
+  return area?.name || null;
+}
 
 export function extractRoomFromEntity(_entityId: string, friendlyName: string): string {
   const name = friendlyName.toLowerCase();
@@ -91,20 +114,44 @@ export function extractRoomFromEntity(_entityId: string, friendlyName: string): 
   return 'other';
 }
 
-export function getRoomsFromEntities(entities: any): Room[] {
-  const roomMap = new Map<string, number>();
+export function getRoomsFromEntities(
+  entities: any,
+  devices: Device[] | null = null,
+  areas: Area[] | null = null
+): Room[] {
+  const roomMap = new Map<string, { count: number; areaId?: string }>();
   
   Object.entries(entities).forEach(([entityId, entity]) => {
-    const friendlyName = (entity as any).attributes?.friendly_name || entityId;
-    const room = extractRoomFromEntity(entityId, friendlyName);
-    roomMap.set(room, (roomMap.get(room) || 0) + 1);
+    // First try to get room from area assignment
+    const areaName = getAreaForEntity(entityId, entities, devices, areas);
+    let room: string;
+    let areaId: string | undefined;
+    
+    if (areaName) {
+      // Use the area name as the room name
+      room = areaName.toLowerCase();
+      // Find the area ID for reference
+      const area = areas?.find(a => a.name === areaName);
+      areaId = area?.area_id;
+    } else {
+      // Fall back to pattern matching from friendly name
+      const friendlyName = (entity as any).attributes?.friendly_name || entityId;
+      room = extractRoomFromEntity(entityId, friendlyName);
+    }
+    
+    const existing = roomMap.get(room) || { count: 0 };
+    roomMap.set(room, { 
+      count: existing.count + 1,
+      areaId: areaId || existing.areaId 
+    });
   });
   
   return Array.from(roomMap.entries())
-    .map(([name, count]) => ({
+    .map(([name, data]) => ({
       id: name.replace(/\s+/g, '_'),
       name: name.charAt(0).toUpperCase() + name.slice(1),
-      entityCount: count
+      entityCount: data.count,
+      areaId: data.areaId
     }))
     .sort((a, b) => {
       // Put "other" at the end
@@ -115,11 +162,25 @@ export function getRoomsFromEntities(entities: any): Room[] {
     });
 }
 
-export function filterEntitiesByRoom(entities: any, roomId: string): [string, any][] {
+export function filterEntitiesByRoom(
+  entities: any,
+  roomId: string,
+  devices: Device[] | null = null,
+  areas: Area[] | null = null
+): [string, any][] {
   return Object.entries(entities).filter(([entityId, entity]) => {
-    const friendlyName = (entity as any).attributes?.friendly_name || entityId;
-    const room = extractRoomFromEntity(entityId, friendlyName);
-    return room.replace(/\s+/g, '_') === roomId;
+    // First try to filter by area assignment
+    const areaName = getAreaForEntity(entityId, entities, devices, areas);
+    
+    if (areaName) {
+      // Compare with the area-based room ID
+      return areaName.toLowerCase().replace(/\s+/g, '_') === roomId;
+    } else {
+      // Fall back to pattern matching from friendly name
+      const friendlyName = (entity as any).attributes?.friendly_name || entityId;
+      const room = extractRoomFromEntity(entityId, friendlyName);
+      return room.replace(/\s+/g, '_') === roomId;
+    }
   });
 }
 

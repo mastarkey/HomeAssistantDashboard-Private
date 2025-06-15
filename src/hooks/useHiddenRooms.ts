@@ -1,26 +1,33 @@
 import { useState, useEffect } from 'react';
-
-const STORAGE_KEY = 'ha_hidden_rooms';
+import { haStorage, STORAGE_KEYS } from '../services/haStorage';
 
 export function useHiddenRooms() {
   const [hiddenRooms, setHiddenRooms] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load from localStorage on mount
+  // Load from HA storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    const loadHiddenRooms = async () => {
       try {
-        setHiddenRooms(JSON.parse(stored));
+        const stored = await haStorage.getItem(STORAGE_KEYS.HIDDEN_ROOMS);
+        if (stored) {
+          setHiddenRooms(stored);
+        }
       } catch (e) {
-        console.error('Failed to parse hidden rooms:', e);
+        // Failed to load hidden rooms
+      } finally {
+        setIsLoading(false);
       }
-    }
+    };
+    loadHiddenRooms();
   }, []);
 
-  // Save to localStorage whenever hiddenRooms changes
+  // Save to HA storage whenever hiddenRooms changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(hiddenRooms));
-  }, [hiddenRooms]);
+    if (!isLoading) {
+      haStorage.setItem(STORAGE_KEYS.HIDDEN_ROOMS, hiddenRooms);
+    }
+  }, [hiddenRooms, isLoading]);
 
   const hideRoom = (roomId: string) => {
     setHiddenRooms(prev => {

@@ -11,8 +11,8 @@ import {
   Snowflake,
   Wind,
   Sun,
-  Fan
 } from 'lucide-react';
+import EditDeviceModal from './EditDeviceModal';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -42,6 +42,9 @@ interface ClimateModalProps {
   entityId: string;
   entity: any;
   onClose: () => void;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
 interface HistoryData {
@@ -50,11 +53,12 @@ interface HistoryData {
   last_changed: string;
 }
 
-const ClimateModal: React.FC<ClimateModalProps> = ({ entityId, entity, onClose }) => {
+const ClimateModal: React.FC<ClimateModalProps> = ({ entityId, entity, onClose, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService, connection } = useHomeAssistant();
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [history, setHistory] = useState<HistoryData[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -415,6 +419,18 @@ const ClimateModal: React.FC<ClimateModalProps> = ({ entityId, entity, onClose }
           </div>
         </div>
       </div>
+      
+      {/* Edit Device Modal */}
+      {showEditModal && (
+        <EditDeviceModal
+          entityId={entityId}
+          entity={entity}
+          onClose={() => setShowEditModal(false)}
+          onSave={onEntityUpdate || (() => {})}
+          rooms={rooms}
+          isCustom={isCustom}
+        />
+      )}
     </div>
   );
 };

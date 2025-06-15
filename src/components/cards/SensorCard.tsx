@@ -1,12 +1,17 @@
-import React from 'react';
-import { Activity, Droplets, Thermometer, Wind, Zap, Eye, Volume2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Activity, Droplets, Thermometer, Wind, Zap, Eye, Volume2, MoreVertical } from 'lucide-react';
+import EditDeviceModal from '../EditDeviceModal';
 
 interface SensorCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity }) => {
+const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+  const [showEditModal, setShowEditModal] = useState(false);
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
   const unit = entity.attributes?.unit_of_measurement || '';
@@ -90,7 +95,8 @@ const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity }) => {
   };
   
   return (
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+    <>
+    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative">
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-white font-medium truncate">{friendlyName}</h3>
@@ -98,8 +104,19 @@ const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity }) => {
             <p className="text-xs text-gray-500 capitalize mt-1">{deviceClass.replace('_', ' ')}</p>
           )}
         </div>
-        <div className="text-gray-400 ml-3">
-          {getIcon()}
+        <div className="flex items-center gap-2">
+          <div className="text-gray-400">
+            {getIcon()}
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowEditModal(true);
+            }}
+            className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <MoreVertical className="w-4 h-4 text-gray-400" />
+          </button>
         </div>
       </div>
       
@@ -122,6 +139,18 @@ const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity }) => {
         <span className="text-xs text-gray-500 uppercase tracking-wider">SENSOR</span>
       </div>
     </div>
+    
+    {showEditModal && onEntityUpdate && (
+      <EditDeviceModal
+        entityId={entityId}
+        entity={entity}
+        onClose={() => setShowEditModal(false)}
+        onSave={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
+      />
+    )}
+    </>
   );
 };
 

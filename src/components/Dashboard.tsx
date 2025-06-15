@@ -3,19 +3,19 @@ import { useHomeAssistant } from '../hooks/useHomeAssistant';
 import { useOrderStorage } from '../hooks/useOrderStorage';
 import { useCustomEntities } from '../hooks/useCustomEntities';
 import { useEntityOverrides } from '../hooks/useEntityOverrides';
-import { useCustomRooms } from '../hooks/useCustomRooms';
+import { useRoomManager } from '../hooks/useRoomManager';
 import { useCustomCategories } from '../hooks/useCustomCategories';
-import { useHiddenRooms } from '../hooks/useHiddenRooms';
 import EntityCard from './EntityCard';
 import DraggableCard from './DraggableCard';
 import AddDeviceModal from './AddDeviceModal';
-import AddCustomDeviceModal from './AddCustomDeviceModal';
 import AddRoomModal from './AddRoomModal';
 import AddCategoryModal from './AddCategoryModal';
 import { filterEntitiesByCategory } from '../utils/entityHelpers';
-import { getRoomsFromEntitiesWithOverrides, filterEntitiesByRoomWithOverrides } from '../utils/entityHelpersWithOverrides';
+import { filterEntitiesByRoomWithOverrides } from '../utils/entityHelpersWithOverrides';
 import { deduplicateEntities } from '../utils/deduplicateEntities';
 import { filterPrimaryDevices } from '../utils/deviceFiltering';
+import { isCameraDetectionEntity } from '../utils/cameraDetectionHelpers';
+import { getDeviceForEntity } from '../utils/deviceRegistry';
 import {
   DndContext,
   closestCenter,
@@ -87,16 +87,13 @@ const roomIcons: Record<string, React.ReactNode> = {
 const Dashboard: React.FC = () => {
   const { entities, config, connected, error, devices } = useHomeAssistant();
   const { updateRoomOrder, updateCategoryOrder, updateDeviceOrder, getRoomOrder, getCategoryOrder, getDeviceOrder } = useOrderStorage();
-  const { customEntities, addCustomEntity, updateCustomEntity, moveCustomEntityToRoom } = useCustomEntities();
-  const { setEntityOverride, getEffectiveRoom } = useEntityOverrides();
-  const { customRooms, addCustomRoom, deleteCustomRoom } = useCustomRooms();
+  const { customEntities, updateCustomEntity, moveCustomEntityToRoom } = useCustomEntities();
+  const { setEntityOverride, getEffectiveRoom, getEntityOverride } = useEntityOverrides();
   const { customCategories, addCustomCategory, deleteCustomCategory } = useCustomCategories();
-  const { hideRoom, isRoomHidden } = useHiddenRooms();
   const [view, setView] = useState<'rooms' | 'categories'>('rooms');
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showAddDevice, setShowAddDevice] = useState(false);
-  const [showAddCustomDevice, setShowAddCustomDevice] = useState(false);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   
@@ -130,38 +127,69 @@ const Dashboard: React.FC = () => {
     return { ...entities, ...customEntities };
   }, [entities, customEntities]);
   
-  // Get unique rooms from entities and merge with custom rooms
+  // Use the room manager for unified room handling
+  const roomManager = useRoomManager(allEntities, getEffectiveRoom);
+  
+  // Get rooms with proper entity counts
   const rooms = useMemo(() => {
-    if (!allEntities) return customRooms;
-    const haRooms = getRoomsFromEntitiesWithOverrides(allEntities, getEffectiveRoom);
-    
-    // Merge Home Assistant rooms with custom rooms
-    const mergedRooms = [...haRooms];
-    customRooms.forEach(customRoom => {
-      if (!mergedRooms.find(room => room.id === customRoom.id)) {
-        mergedRooms.push({
-          ...customRoom,
-          entityCount: 0  // Add entityCount for custom rooms
-        });
-      }
-    });
-    
-    // Calculate deduplicated counts for each room
-    const roomsWithCounts = mergedRooms.map(room => {
+    const roomsWithCounts = roomManager.rooms.map(room => {
       const roomEntities = filterEntitiesByRoomWithOverrides(allEntities, room.id, getEffectiveRoom);
       const deduplicated = deduplicateEntities(roomEntities, devices, allEntities);
-      const primaryCount = filterPrimaryDevices(deduplicated, devices, allEntities).length;
+      const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
+      
+      // Debug logging for garage room
+      if (room.id === 'garage') {
+        console.log('[DEBUG] Garage room entities:', {
+          allEntitiesCount: roomEntities.length,
+          deduplicatedCount: deduplicated.length,
+          primaryDevicesCount: primaryDevices.length,
+          entities: primaryDevices.map(([id, e]) => ({ 
+            id, 
+            friendlyName: e.attributes?.friendly_name,
+            domain: id.split('.')[0],
+            effectiveRoom: getEffectiveRoom(id),
+            override: getEntityOverride(id)
+          }))
+        });
+        
+        // Check specifically for Tesla entities
+        const teslaEntities = Object.entries(allEntities).filter(([id, e]) => {
+          const name = (e as any).attributes?.friendly_name || id;
+          return id.toLowerCase().includes('tesla') || name.toLowerCase().includes('tesla') ||
+                 id.toLowerCase().includes('wall_connector') || name.toLowerCase().includes('wall connector');
+        });
+        console.log('[DEBUG] All Tesla entities:', teslaEntities.map(([id, e]) => ({
+          id,
+          friendlyName: (e as any).attributes?.friendly_name,
+          effectiveRoom: getEffectiveRoom(id),
+          override: getEntityOverride(id)
+        })));
+      }
+      
+      // Filter out hidden and camera detection entities for count
+      const visibleCount = primaryDevices.filter(([entityId, entity]) => {
+        const override = getEntityOverride(entityId);
+        if (override?.hidden) return false;
+        
+        // Use improved detection logic that doesn't rely on friendly names
+        const device = devices ? getDeviceForEntity(entityId, allEntities, devices) : null;
+        if (isCameraDetectionEntity(entityId, entity, device)) {
+          return false;
+        }
+        
+        return true;
+      }).length;
+      
       return {
         ...room,
-        entityCount: primaryCount,
-        isCustom: customRooms.some(cr => cr.id === room.id)
+        entityCount: visibleCount
       };
-    }).filter(room => room.id !== 'other' || room.entityCount > 5)
-      .filter(room => !isRoomHidden(room.id)); // Filter out hidden rooms
+    });
     
     // Apply saved order
-    return getRoomOrder(roomsWithCounts);
-  }, [allEntities, devices, getRoomOrder, getEffectiveRoom, customRooms, isRoomHidden]);
+    const ordered = getRoomOrder(roomsWithCounts);
+    return ordered;
+  }, [roomManager.rooms, allEntities, devices, getRoomOrder, getEffectiveRoom, getEntityOverride]);
 
   // Filter entities based on selection
   const displayedEntities = useMemo(() => {
@@ -181,8 +209,22 @@ const Dashboard: React.FC = () => {
     // Filter to only show primary devices
     const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
     
+    // Filter out hidden entities and camera detection entities
+    const visibleDevices = primaryDevices.filter(([entityId, entity]) => {
+      const override = getEntityOverride(entityId);
+      if (override?.hidden) return false;
+      
+      // Use improved detection logic that doesn't rely on friendly names
+      const device = devices ? getDeviceForEntity(entityId, allEntities, devices) : null;
+      if (isCameraDetectionEntity(entityId, entity, device)) {
+        return false;
+      }
+      
+      return true;
+    });
+    
     // Sort entities
-    const sorted = primaryDevices.sort((a, b) => {
+    const sorted = visibleDevices.sort((a, b) => {
       // Sort by domain first (lights, switches, then others)
       const domainOrder = ['light', 'switch', 'climate', 'media_player', 'sensor', 'binary_sensor'];
       const aDomain = a[0].split('.')[0];
@@ -217,7 +259,36 @@ const Dashboard: React.FC = () => {
       const categoryEntities = filterEntitiesByCategory(allEntities, category.id, categoryDomains);
       const deduplicated = deduplicateEntities(categoryEntities, devices, allEntities);
       const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
-      counts[category.id] = primaryDevices.length;
+      
+      // Debug logging for climate category
+      if (category.id === 'climate') {
+        console.log('[DEBUG] Climate category entities:', {
+          allEntitiesCount: categoryEntities.length,
+          deduplicatedCount: deduplicated.length,
+          primaryDevicesCount: primaryDevices.length,
+          entities: primaryDevices.map(([id, e]) => ({ 
+            id, 
+            friendlyName: e.attributes?.friendly_name,
+            room: getEffectiveRoom(id)
+          }))
+        });
+      }
+      
+      // Filter out hidden and camera detection entities
+      const visibleCount = primaryDevices.filter(([entityId, entity]) => {
+        const override = getEntityOverride(entityId);
+        if (override?.hidden) return false;
+        
+        // Use improved detection logic that doesn't rely on friendly names
+        const device = devices ? getDeviceForEntity(entityId, allEntities, devices) : null;
+        if (isCameraDetectionEntity(entityId, entity, device)) {
+          return false;
+        }
+        
+        return true;
+      }).length;
+      
+      counts[category.id] = visibleCount;
     });
     
     // Add counts for custom categories
@@ -225,11 +296,26 @@ const Dashboard: React.FC = () => {
       const categoryEntities = filterEntitiesByCategory(allEntities, category.id, categoryDomains);
       const deduplicated = deduplicateEntities(categoryEntities, devices, allEntities);
       const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
-      counts[category.id] = primaryDevices.length;
+      
+      // Filter out hidden and camera detection entities
+      const visibleCount = primaryDevices.filter(([entityId, entity]) => {
+        const override = getEntityOverride(entityId);
+        if (override?.hidden) return false;
+        
+        // Use improved detection logic that doesn't rely on friendly names
+        const device = devices ? getDeviceForEntity(entityId, allEntities, devices) : null;
+        if (isCameraDetectionEntity(entityId, entity, device)) {
+          return false;
+        }
+        
+        return true;
+      }).length;
+      
+      counts[category.id] = visibleCount;
     });
     
     return counts;
-  }, [allEntities, devices, customCategories, categoryDomains]);
+  }, [allEntities, devices, customCategories, categoryDomains, getEffectiveRoom, getEntityOverride]);
   
   // Get ordered categories and merge with custom categories
   const orderedCategories = useMemo(() => {
@@ -252,32 +338,51 @@ const Dashboard: React.FC = () => {
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
     
-    if (active.id !== over.id) {
-      if (view === 'rooms') {
-        const oldIndex = rooms.findIndex(room => room.id === active.id);
-        const newIndex = rooms.findIndex(room => room.id === over.id);
-        
-        if (oldIndex !== -1 && newIndex !== -1) {
-          const newOrder = arrayMove(rooms, oldIndex, newIndex).map(room => room.id);
-          updateRoomOrder(newOrder);
-        }
-      } else if (view === 'categories') {
-        const oldIndex = orderedCategories.findIndex(cat => cat.id === active.id);
-        const newIndex = orderedCategories.findIndex(cat => cat.id === over.id);
-        
-        if (oldIndex !== -1 && newIndex !== -1) {
-          const newOrder = arrayMove(orderedCategories, oldIndex, newIndex).map(cat => cat.id);
-          updateCategoryOrder(newOrder);
-        }
-      } else if (selectedRoom || selectedCategory) {
-        const oldIndex = displayedEntities.findIndex(([id]) => id === active.id);
-        const newIndex = displayedEntities.findIndex(([id]) => id === over.id);
-        
-        if (oldIndex !== -1 && newIndex !== -1) {
-          const newOrder = arrayMove(displayedEntities, oldIndex, newIndex).map(([id]) => id);
-          const key = selectedRoom || selectedCategory || '';
-          updateDeviceOrder(key, newOrder);
-        }
+    console.log('[DEBUG] handleDragEnd:', { 
+      activeId: active?.id, 
+      overId: over?.id,
+      view,
+      selectedRoom,
+      selectedCategory
+    });
+    
+    if (!over || active.id === over.id) {
+      return;
+    }
+    
+    if (view === 'rooms' && !selectedRoom) {
+      const oldIndex = rooms.findIndex(room => room.id === active.id);
+      const newIndex = rooms.findIndex(room => room.id === over.id);
+      
+      console.log('[DEBUG] Room drag:', { oldIndex, newIndex });
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(rooms, oldIndex, newIndex).map(room => room.id);
+        console.log('[DEBUG] New room order:', newOrder);
+        updateRoomOrder(newOrder);
+      }
+    } else if (view === 'categories' && !selectedCategory) {
+      const oldIndex = orderedCategories.findIndex(cat => cat.id === active.id);
+      const newIndex = orderedCategories.findIndex(cat => cat.id === over.id);
+      
+      console.log('[DEBUG] Category drag:', { oldIndex, newIndex });
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(orderedCategories, oldIndex, newIndex).map(cat => cat.id);
+        console.log('[DEBUG] New category order:', newOrder);
+        updateCategoryOrder(newOrder);
+      }
+    } else if (selectedRoom || selectedCategory) {
+      const oldIndex = displayedEntities.findIndex(([id]) => id === active.id);
+      const newIndex = displayedEntities.findIndex(([id]) => id === over.id);
+      
+      console.log('[DEBUG] Device drag:', { oldIndex, newIndex, key: selectedRoom || selectedCategory });
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(displayedEntities, oldIndex, newIndex).map(([id]) => id);
+        const key = selectedRoom || selectedCategory || '';
+        console.log('[DEBUG] New device order for', key, ':', newOrder);
+        updateDeviceOrder(key, newOrder);
       }
     }
   };
@@ -368,7 +473,7 @@ const Dashboard: React.FC = () => {
                     : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                 }`}
               >
-                Types ({deviceCategories.length})
+                Types ({orderedCategories.filter(category => (categoryCounts[category.id] || 0) > 0).length})
               </button>
             </div>
 
@@ -380,7 +485,7 @@ const Dashboard: React.FC = () => {
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={view === 'rooms' ? rooms.map(r => r.id) : orderedCategories.map(c => c.id)}
+                  items={view === 'rooms' ? rooms.map(r => r.id) : orderedCategories.filter(category => (categoryCounts[category.id] || 0) > 0).map(c => c.id)}
                   strategy={rectSortingStrategy}
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
@@ -418,7 +523,7 @@ const Dashboard: React.FC = () => {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (confirm(`Are you sure you want to delete the room "${room.name}"?`)) {
-                                        deleteCustomRoom(room.id);
+                                        roomManager.deleteRoom(room.id);
                                       }
                                     }}
                                     className="absolute top-2 right-2 p-2 bg-gray-700 hover:bg-red-600 rounded-lg transition-colors"
@@ -450,7 +555,9 @@ const Dashboard: React.FC = () => {
 
                     {view === 'categories' && (
                       <>
-                        {orderedCategories.map((category) => (
+                        {orderedCategories
+                          .filter(category => (categoryCounts[category.id] || 0) > 0)
+                          .map((category) => (
                           <DraggableCard key={category.id} id={category.id}>
                             <div className="relative">
                               <button
@@ -536,13 +643,7 @@ const Dashboard: React.FC = () => {
                       onClick={() => {
                         const room = rooms.find(r => r.id === selectedRoom);
                         if (room && confirm(`Are you sure you want to delete the room "${room.name}"?`)) {
-                          if (room.isCustom) {
-                            // Delete custom room completely
-                            deleteCustomRoom(selectedRoom);
-                          } else {
-                            // Hide Home Assistant detected room
-                            hideRoom(selectedRoom);
-                          }
+                          roomManager.deleteRoom(selectedRoom);
                           setSelectedRoom(null);
                         }
                       }}
@@ -640,10 +741,6 @@ const Dashboard: React.FC = () => {
           onAssign={(entityId, roomId) => {
             setEntityOverride(entityId, { room: roomId });
           }}
-          onCreateCustom={() => {
-            setShowAddDevice(false);
-            setShowAddCustomDevice(true);
-          }}
           entities={allEntities}
           devices={devices}
           rooms={rooms}
@@ -651,20 +748,12 @@ const Dashboard: React.FC = () => {
         />
       )}
       
-      {/* Add Custom Device Modal */}
-      {showAddCustomDevice && (
-        <AddCustomDeviceModal
-          onClose={() => setShowAddCustomDevice(false)}
-          onAdd={addCustomEntity}
-          rooms={rooms}
-        />
-      )}
       
       {/* Add Room Modal */}
       {showAddRoom && (
         <AddRoomModal
           onClose={() => setShowAddRoom(false)}
-          onAdd={addCustomRoom}
+          onAdd={roomManager.addRoom}
           existingRooms={rooms}
         />
       )}

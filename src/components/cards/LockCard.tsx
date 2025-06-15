@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
-import { Lock, Unlock, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Lock, Unlock, ShieldCheck, AlertTriangle, MoreVertical } from 'lucide-react';
+import EditDeviceModal from '../EditDeviceModal';
 
 interface LockCardProps {
   entityId: string;
   entity: any;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const LockCard: React.FC<LockCardProps> = ({ entityId, entity }) => {
+const LockCard: React.FC<LockCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -64,7 +69,8 @@ const LockCard: React.FC<LockCardProps> = ({ entityId, entity }) => {
   };
   
   return (
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+    <>
+    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3 flex-1">
           <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
@@ -73,8 +79,19 @@ const LockCard: React.FC<LockCardProps> = ({ entityId, entity }) => {
             <p className="text-sm text-gray-400">{getStateText()}</p>
           </div>
         </div>
-        <div className={`p-2 rounded-lg ${isLocked ? 'bg-green-500/20 text-green-400' : 'bg-orange-500/20 text-orange-400'}`}>
-          {getIcon()}
+        <div className="flex items-center gap-2">
+          <div className={`p-2 rounded-lg ${isLocked ? 'bg-green-500/20 text-green-400' : 'bg-orange-500/20 text-orange-400'}`}>
+            {getIcon()}
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowEditModal(true);
+            }}
+            className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <MoreVertical className="w-4 h-4 text-gray-400" />
+          </button>
         </div>
       </div>
       
@@ -114,6 +131,18 @@ const LockCard: React.FC<LockCardProps> = ({ entityId, entity }) => {
         <span className="text-xs text-gray-500 uppercase tracking-wider">LOCK</span>
       </div>
     </div>
+    
+    {showEditModal && onEntityUpdate && (
+      <EditDeviceModal
+        entityId={entityId}
+        entity={entity}
+        onClose={() => setShowEditModal(false)}
+        onSave={onEntityUpdate}
+        rooms={rooms}
+        isCustom={isCustom}
+      />
+    )}
+    </>
   );
 };
 

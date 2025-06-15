@@ -19,21 +19,32 @@ import {
   Repeat,
   MoreHorizontal,
   Info,
-  Activity
+  Activity,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { getRelatedEntities } from '../utils/deviceFiltering';
+import EditDeviceModal from './EditDeviceModal';
+import { useCustomEntities } from '../hooks/useCustomEntities';
+import { useEntityOverrides } from '../hooks/useEntityOverrides';
 
 interface MediaPlayerModalProps {
   entityId: string;
   entity: any;
   deviceType: 'tv' | 'speaker' | 'receiver' | 'streaming' | 'phone';
   onClose: () => void;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({ entityId, entity, deviceType, onClose }) => {
+const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({ entityId, entity, deviceType, onClose, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService, entities } = useHomeAssistant();
+  const { deleteCustomEntity } = useCustomEntities();
+  const { setEntityOverride } = useEntityOverrides();
   const [isControlling, setIsControlling] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -412,6 +423,37 @@ const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({ entityId, entity, d
                   </button>
                 )}
               </div>
+              
+              {/* Edit/Delete Actions */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center justify-center gap-2"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  <span className="text-sm">Edit</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to ${isCustom ? 'delete' : 'hide'} ${friendlyName}?`)) {
+                      if (isCustom) {
+                        deleteCustomEntity(entityId);
+                      } else {
+                        // Hide the entity by marking it as hidden
+                        setEntityOverride(entityId, { hidden: true });
+                        if (onEntityUpdate) {
+                          onEntityUpdate(entityId, { hidden: true });
+                        }
+                      }
+                      onClose();
+                    }
+                  }}
+                  className="p-3 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="text-sm">{isCustom ? 'Delete' : 'Hide'}</span>
+                </button>
+              </div>
             </div>
             
             {/* Related Entities */}
@@ -447,6 +489,18 @@ const MediaPlayerModal: React.FC<MediaPlayerModalProps> = ({ entityId, entity, d
           </div>
         </div>
       </div>
+      
+      {/* Edit Device Modal */}
+      {showEditModal && (
+        <EditDeviceModal
+          entityId={entityId}
+          entity={entity}
+          onClose={() => setShowEditModal(false)}
+          onSave={onEntityUpdate || (() => {})}
+          rooms={rooms}
+          isCustom={isCustom}
+        />
+      )}
     </div>
   );
 };

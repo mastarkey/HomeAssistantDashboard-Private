@@ -11,16 +11,15 @@ import {
   Shield,
   Fan,
   Blinds,
-  Plus,
   Search,
-  Home
+  Home,
+  Bot
 } from 'lucide-react';
-import { getUnassignedDevices, groupDevicesByDomain } from '../utils/unassignedDevices';
+import { getAllAvailableDevices, groupDevicesByDomain } from '../utils/unassignedDevices';
 
 interface AddDeviceModalProps {
   onClose: () => void;
   onAssign: (entityId: string, roomId: string) => void;
-  onCreateCustom: () => void;
   entities: any;
   devices: any[] | null;
   rooms: Array<{ id: string; name: string }>;
@@ -38,6 +37,7 @@ const domainIcons: Record<string, React.ReactNode> = {
   binary_sensor: <Shield className="w-5 h-5" />,
   fan: <Fan className="w-5 h-5" />,
   cover: <Blinds className="w-5 h-5" />,
+  vacuum: <Bot className="w-5 h-5" />,
 };
 
 const domainNames: Record<string, string> = {
@@ -51,31 +51,41 @@ const domainNames: Record<string, string> = {
   binary_sensor: 'Binary Sensors',
   fan: 'Fans',
   cover: 'Covers',
+  vacuum: 'Vacuums',
 };
 
 const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ 
   onClose, 
   onAssign, 
-  onCreateCustom,
   entities, 
   devices, 
   rooms,
   getEffectiveRoom 
 }) => {
+  console.log('[DEBUG] AddDeviceModal opened with:', {
+    totalEntities: entities ? Object.keys(entities).length : 0,
+    sensorCount: entities ? Object.keys(entities).filter(k => k.startsWith('sensor.')).length : 0,
+    switchCount: entities ? Object.keys(entities).filter(k => k.startsWith('switch.')).length : 0,
+    devicesCount: devices ? devices.length : 0
+  });
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Get unassigned devices
-  const unassignedDevices = useMemo(() => {
-    return getUnassignedDevices(entities, devices, getEffectiveRoom);
-  }, [entities, devices, getEffectiveRoom]);
+  // Get all available devices
+  const availableDevices = useMemo(() => {
+    const allDevices = getAllAvailableDevices(entities, devices);
+    console.log('[DEBUG] AddDeviceModal - Total available devices:', allDevices.length);
+    return allDevices;
+  }, [entities, devices]);
 
   // Group devices by domain
   const groupedDevices = useMemo(() => {
-    return groupDevicesByDomain(unassignedDevices);
-  }, [unassignedDevices]);
+    const grouped = groupDevicesByDomain(availableDevices);
+    console.log('[DEBUG] Grouped devices by domain:', Object.keys(grouped).map(domain => `${domain}: ${grouped[domain].length}`));
+    return grouped;
+  }, [availableDevices]);
 
   // Filter devices based on search query
   const filteredDevices = useMemo(() => {
@@ -94,6 +104,11 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
 
   const handleAssign = () => {
     if (selectedDevice && selectedRoom) {
+      console.log('[DEBUG] Assigning device to room:', {
+        device: selectedDevice,
+        room: selectedRoom,
+        entity: entities[selectedDevice]
+      });
       onAssign(selectedDevice, selectedRoom);
       onClose();
     }
@@ -116,43 +131,36 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
         {!selectedDomain ? (
           <div>
             <p className="text-gray-400 mb-6">
-              Select a device type to see available devices, or create a custom device.
+              Select a device type to see your actual Home Assistant devices. You can assign or reassign them to rooms.
             </p>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
-              {Object.entries(groupedDevices).map(([domain, devices]) => (
-                <button
-                  key={domain}
-                  onClick={() => setSelectedDomain(domain)}
-                  className="bg-gray-800 hover:bg-gray-700 rounded-lg p-4 transition-colors text-left group"
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
-                      {domainIcons[domain] || <Home className="w-5 h-5" />}
+              {/* Always show common domains even if no devices yet */}
+              {['light', 'switch', 'sensor', 'binary_sensor', 'media_player', 'camera', 'climate', 'cover', 'fan', 'vacuum'].map(domain => {
+                const devices = groupedDevices[domain] || [];
+                console.log(`[DEBUG] Rendering button for domain: ${domain} with ${devices.length} devices`);
+                return (
+                  <button
+                    key={domain}
+                    onClick={() => setSelectedDomain(domain)}
+                    className={`${devices.length > 0 ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-900 hover:bg-gray-800 opacity-60'} rounded-lg p-4 transition-colors text-left group`}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
+                        {domainIcons[domain] || <Home className="w-5 h-5" />}
+                      </div>
+                      <span className="text-white font-medium">
+                        {domainNames[domain] || domain}
+                      </span>
                     </div>
-                    <span className="text-white font-medium">
-                      {domainNames[domain] || domain}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    {devices.length} available
-                  </p>
-                </button>
-              ))}
+                    <p className="text-sm text-gray-500">
+                      {devices.length} device{devices.length !== 1 ? 's' : ''}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="border-t border-gray-800 pt-6">
-              <button
-                onClick={onCreateCustom}
-                className="w-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg p-4 transition-colors flex items-center justify-center gap-3"
-              >
-                <Plus className="w-5 h-5" />
-                <span className="font-medium">Create Custom Device</span>
-              </button>
-              <p className="text-xs text-gray-500 text-center mt-2">
-                Create a device that doesn't exist in Home Assistant
-              </p>
-            </div>
           </div>
         ) : (
           <div>
@@ -168,12 +176,15 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
               ← Back to device types
             </button>
 
-            <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-medium text-white mb-2 flex items-center gap-2">
               <span className="text-gray-400">
                 {domainIcons[selectedDomain] || <Home className="w-5 h-5" />}
               </span>
               {domainNames[selectedDomain] || selectedDomain}
             </h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Select a {domainNames[selectedDomain]?.toLowerCase().slice(0, -1) || 'device'} from your Home Assistant to add it to a room
+            </p>
 
             {/* Search */}
             <div className="relative mb-4">
@@ -191,7 +202,7 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
             <div className="space-y-2 mb-6 max-h-64 overflow-y-auto">
               {filteredDevices.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">
-                  {searchQuery ? 'No devices found matching your search.' : 'No unassigned devices found.'}
+                  {searchQuery ? 'No devices found matching your search.' : 'No devices found.'}
                 </p>
               ) : (
                 filteredDevices.map(([entityId, entity]) => (
@@ -205,18 +216,37 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div>
+                      <div className="flex-1">
                         <p className="font-medium">
                           {entity.attributes?.friendly_name || entityId}
                         </p>
-                        <p className="text-sm opacity-70">{entityId}</p>
-                      </div>
-                      <p className="text-sm">
-                        {entity.state}
-                        {entity.attributes?.unit_of_measurement && (
-                          <span className="ml-1">{entity.attributes.unit_of_measurement}</span>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="font-mono text-xs opacity-50">{entityId}</span>
+                          {entity.attributes?.manufacturer && (
+                            <span className="opacity-70">{entity.attributes.manufacturer}</span>
+                          )}
+                          {entity.attributes?.model && (
+                            <span className="opacity-70">{entity.attributes.model}</span>
+                          )}
+                        </div>
+                        {getEffectiveRoom && getEffectiveRoom(entityId) && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-yellow-500">
+                            <Home className="w-3 h-3" />
+                            <span>Already in: {rooms.find(r => r.id === getEffectiveRoom(entityId))?.name || getEffectiveRoom(entityId)}</span>
+                          </div>
                         )}
-                      </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm">
+                          {entity.state}
+                          {entity.attributes?.unit_of_measurement && (
+                            <span className="ml-1">{entity.attributes.unit_of_measurement}</span>
+                          )}
+                        </p>
+                        {entity.attributes?.device_class && (
+                          <p className="text-xs text-gray-500 capitalize mt-1">{entity.attributes.device_class.replace(/_/g, ' ')}</p>
+                        )}
+                      </div>
                     </div>
                   </button>
                 ))

@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useHomeAssistant } from '../hooks/useHomeAssistant';
-import { X, Maximize2, Volume2, VolumeX, Info, Shield, Activity, RefreshCw, Clock } from 'lucide-react';
+import { X, Maximize2, Volume2, VolumeX, Info, Shield, Activity, RefreshCw, Clock, Edit2 } from 'lucide-react';
 import { getRelatedEntities } from '../utils/deviceFiltering';
 import { getDeviceForEntity, getEntitiesForDevice } from '../utils/deviceRegistry';
 import CameraImage from './CameraImage';
+import EditDeviceModal from './EditDeviceModal';
 
 interface CameraModalProps {
   entityId: string;
   entity: any;
   onClose: () => void;
   initialRefreshKey?: number;
+  onEntityUpdate?: (entityId: string, updates: any) => void;
+  rooms?: Array<{ id: string; name: string }>;
+  isCustom?: boolean;
 }
 
-const CameraModal: React.FC<CameraModalProps> = ({ entityId, entity, onClose, initialRefreshKey = 0 }) => {
+const CameraModal: React.FC<CameraModalProps> = ({ entityId, entity, onClose, initialRefreshKey = 0, onEntityUpdate, rooms = [], isCustom = false }) => {
   const { callService, entities, config, devices } = useHomeAssistant();
   const [isMuted, setIsMuted] = useState(true);
   const [refreshKey, setRefreshKey] = useState(initialRefreshKey);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -163,12 +168,23 @@ const CameraModal: React.FC<CameraModalProps> = ({ entityId, entity, onClose, in
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onEntityUpdate && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                title="Edit device"
+              >
+                <Edit2 className="w-5 h-5 text-gray-400" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col lg:flex-row h-[calc(90vh-100px)]">
@@ -339,6 +355,17 @@ const CameraModal: React.FC<CameraModalProps> = ({ entityId, entity, onClose, in
           </div>
         </div>
       </div>
+      
+      {showEditModal && onEntityUpdate && (
+        <EditDeviceModal
+          entityId={entityId}
+          entity={entity}
+          onClose={() => setShowEditModal(false)}
+          onSave={onEntityUpdate}
+          rooms={rooms}
+          isCustom={isCustom}
+        />
+      )}
     </div>
   );
 };

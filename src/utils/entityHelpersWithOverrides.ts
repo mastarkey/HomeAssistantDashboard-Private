@@ -68,6 +68,20 @@ export function filterEntitiesByRoomWithOverrides(
 ): [string, any][] {
   console.log(`[DEBUG] filterEntitiesByRoomWithOverrides called for room: ${roomId}`);
   
+  // First, log all Tesla entities to see if they exist
+  const allTeslaEntities = Object.entries(entities).filter(([id]) => 
+    id.toLowerCase().includes('tesla_wall_connector')
+  );
+  if (allTeslaEntities.length > 0) {
+    console.log(`[DEBUG] Found ${allTeslaEntities.length} Tesla entities in total:`, 
+      allTeslaEntities.map(([id, e]) => ({
+        id,
+        state: (e as any).state,
+        effectiveRoom: getEffectiveRoom ? getEffectiveRoom(id, getRoomFromEntity(e)) : getRoomFromEntity(e)
+      }))
+    );
+  }
+  
   const results = Object.entries(entities).filter(([entityId, entity]) => {
     let room: string;
     
@@ -77,7 +91,7 @@ export function filterEntitiesByRoomWithOverrides(
       
       // Log Tesla entities specifically
       if (entityId.toLowerCase().includes('tesla') || entityId.toLowerCase().includes('wall_connector')) {
-        console.log(`[DEBUG] Tesla entity ${entityId}: defaultRoom=${defaultRoom}, effectiveRoom=${room}`);
+        console.log(`[DEBUG] Tesla entity ${entityId}: defaultRoom=${defaultRoom}, effectiveRoom=${room}, looking for roomId=${roomId}`);
       }
     } else {
       room = getRoomFromEntity(entity);

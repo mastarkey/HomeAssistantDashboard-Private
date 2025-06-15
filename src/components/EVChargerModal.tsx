@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHomeAssistant } from '../hooks/useHomeAssistant';
 import { 
   X, 
@@ -19,6 +19,8 @@ import { getRelatedEntities } from '../utils/deviceFiltering';
 import EditDeviceModal from './EditDeviceModal';
 import { useCustomEntities } from '../hooks/useCustomEntities';
 import { useEntityOverrides } from '../hooks/useEntityOverrides';
+import Chart from 'chart.js/auto';
+import 'chartjs-adapter-date-fns';
 
 interface EVChargerModalProps {
   entityId: string;
@@ -36,6 +38,9 @@ const EVChargerModal: React.FC<EVChargerModalProps> = ({ entityId, entity, onClo
   const [isControlling, setIsControlling] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<'today' | 'week' | 'month'>('today');
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const chartRef = useRef<HTMLCanvasElement>(null);
+  const chartInstance = useRef<Chart | null>(null);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -66,12 +71,31 @@ const EVChargerModal: React.FC<EVChargerModalProps> = ({ entityId, entity, onClo
   const energyMonth = attributes.energy_month || 0;
   const energyTotal = attributes.energy_total || 0;
   
-  // Find related entities
-  const relatedEntities = getRelatedEntities(entityId, entities || {});
+  // Find related entities - special handling for Tesla
+  let relatedEntities: [string, any][] = [];
+  if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+    // For Tesla, find ALL Tesla entities
+    relatedEntities = Object.entries(entities || {}).filter(([id]) => 
+      id.toLowerCase().includes('tesla_wall_connector') && id !== entityId
+    );
+    console.log(`[DEBUG] Found ${relatedEntities.length} related Tesla entities`);
+  } else {
+    relatedEntities = getRelatedEntities(entityId, entities || {});
+  }
   
   // Find specific related sensors
   const findRelatedEntity = (pattern: RegExp): any => {
     if (!entities) return null;
+    
+    // For Tesla Wall Connector, search all Tesla entities
+    if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+      const relatedId = Object.keys(entities).find(id => 
+        id.toLowerCase().includes('tesla_wall_connector') && pattern.test(id)
+      );
+      return relatedId ? entities[relatedId] : null;
+    }
+    
+    // For other chargers
     const relatedId = Object.keys(entities).find(id => 
       id.includes(entityId.split('.')[1]) && pattern.test(id)
     );
@@ -107,6 +131,37 @@ const EVChargerModal: React.FC<EVChargerModalProps> = ({ entityId, entity, onClo
   // Calculate charging session time
   const [sessionTime, setSessionTime] = useState(chargingTime || 0);
   
+  // Fetch history data
+  useEffect(() => {
+    const fetchHistory = async () => {
+      // This would normally call Home Assistant's history API
+      // For now, we'll create mock data to show the chart structure
+      const mockData = generateMockHistory();
+      setHistoryData(mockData);
+    };
+    
+    fetchHistory();
+  }, [entityId, selectedTimeFrame]);
+  
+  // Generate mock history data
+  const generateMockHistory = () => {
+    const now = new Date();
+    const data = [];
+    const hours = selectedTimeFrame === 'today' ? 24 : selectedTimeFrame === 'week' ? 7 * 24 : 30 * 24;
+    
+    for (let i = hours; i >= 0; i--) {
+      const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+      const isCharging = Math.random() > 0.7 && i % 24 < 8; // More likely to charge at night
+      data.push({
+        time,
+        state: isCharging ? 'charging' : Math.random() > 0.5 ? 'connected' : 'not_connected',
+        power: isCharging ? Math.random() * 11 : 0
+      });
+    }
+    
+    return data;
+  };
+  
   useEffect(() => {
     if (chargingState === 'charging' && chargingStartTime) {
       const interval = setInterval(() => {
@@ -119,6 +174,96 @@ const EVChargerModal: React.FC<EVChargerModalProps> = ({ entityId, entity, onClo
       return () => clearInterval(interval);
     }
   }, [chargingState, chargingStartTime]);
+  
+  // Setup chart
+  useEffect(() => {
+    if (!chartRef.current || historyData.length === 0) return;
+    
+    // Destroy existing chart
+    if (chartInstance.current) {
+      chartInstance.current.destroy();
+    }
+    
+    const ctx = chartRef.current.getContext('2d');
+    if (!ctx) return;
+    
+    // Process data for chart
+    const labels = historyData.map(d => d.time);
+    const stateColors = historyData.map(d => {
+      switch (d.state) {
+        case 'charging': return 'rgba(139, 92, 246, 0.8)'; // purple
+        case 'connected': return 'rgba(251, 191, 36, 0.8)'; // yellow
+        default: return 'rgba(75, 85, 99, 0.8)'; // gray
+      }
+    });
+    
+    chartInstance.current = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Charging State',
+          data: historyData.map(d => d.state === 'charging' ? 1 : d.state === 'connected' ? 0.5 : 0.1),
+          backgroundColor: stateColors,
+          borderWidth: 0,
+          barThickness: selectedTimeFrame === 'today' ? 20 : 5,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: 'white',
+            bodyColor: 'white',
+            callbacks: {
+              label: (context) => {
+                const point = historyData[context.dataIndex];
+                return `State: ${point.state}${point.power > 0 ? ` (${point.power.toFixed(1)} kW)` : ''}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: {
+              unit: selectedTimeFrame === 'today' ? 'hour' : 'day',
+              displayFormats: {
+                hour: 'HH:mm',
+                day: 'MMM dd'
+              }
+            },
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: 'rgba(255, 255, 255, 0.5)',
+              maxTicksLimit: selectedTimeFrame === 'today' ? 12 : 7
+            }
+          },
+          y: {
+            display: false,
+            max: 1.2
+          }
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        }
+      }
+    });
+    
+    return () => {
+      if (chartInstance.current) {
+        chartInstance.current.destroy();
+      }
+    };
+  }, [historyData, selectedTimeFrame]);
   
   const handleControl = async (service: string, data?: any) => {
     if (isControlling) return;
@@ -340,6 +485,60 @@ const EVChargerModal: React.FC<EVChargerModalProps> = ({ entityId, entity, onClo
                   </p>
                 </div>
               )}
+            </div>
+            
+            {/* Charging History */}
+            <div className="bg-gray-800/50 rounded-2xl p-6 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-white flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  Charging History
+                </h3>
+                <div className="flex gap-1">
+                  {['today', 'week', 'month'].map((timeFrame) => (
+                    <button
+                      key={timeFrame}
+                      onClick={() => setSelectedTimeFrame(timeFrame as any)}
+                      className={`px-2 py-1 rounded text-xs transition-all ${
+                        selectedTimeFrame === timeFrame 
+                          ? 'bg-purple-600 text-white' 
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      {timeFrame.charAt(0).toUpperCase() + timeFrame.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* History Chart */}
+              <div className="space-y-3">
+                <div className="bg-gray-700/30 rounded-lg p-3">
+                  <div style={{ height: '150px' }}>
+                    <canvas ref={chartRef}></canvas>
+                  </div>
+                </div>
+                
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-4 text-xs">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-purple-600 rounded"></div>
+                    <span className="text-gray-400">Charging</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-yellow-600 rounded"></div>
+                    <span className="text-gray-400">Connected</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-gray-600 rounded"></div>
+                    <span className="text-gray-400">Not Connected</span>
+                  </div>
+                </div>
+                
+                <div className="text-xs text-gray-500 italic text-center">
+                  State history for the last {selectedTimeFrame}
+                </div>
+              </div>
             </div>
             
             {/* Device Info */}

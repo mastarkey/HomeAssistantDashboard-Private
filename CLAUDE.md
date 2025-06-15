@@ -72,3 +72,45 @@ When modifying entity filtering:
 3. **Drag & Drop**: Uses `@dnd-kit` library, order persisted via HA storage
 4. **Camera URLs**: Multiple strategies attempted in `CameraImage.tsx` for compatibility
 5. **Climate History**: Uses Chart.js for temperature graphs in `ClimateModal.tsx`
+
+## Custom Hooks Reference
+
+Key hooks that manage application state:
+- `useHomeAssistant`: WebSocket connection and entity state management
+- `useOrderStorage`: Persists drag-and-drop card ordering
+- `useEntityOverrides`: Manual room assignment overrides
+- `useCustomEntities`: User-created custom devices
+- `useCustomRooms`: User-defined rooms beyond Home Assistant areas
+- `useCustomCategories`: Additional device categories
+- `useHiddenRooms`: Room visibility toggles
+
+## Entity Type Handling
+
+The dashboard supports these entity domains with specialized cards:
+- `light` - Brightness, color temperature, RGB control
+- `switch` - Simple on/off toggle
+- `climate` - Temperature, mode, fan control with history graphs
+- `camera` - Live image streams with multiple URL strategies
+- `media_player` - Playback controls, volume, source selection
+- `cover` - Position control for blinds/garage doors
+- `lock` - Lock/unlock with code support
+- `vacuum` - Cleaning controls and status
+- `fan` - Speed and oscillation control
+- `sensor` - Value display with units and graphs
+- `binary_sensor` - State display with custom icons
+- `number` - Slider input controls
+- `select` - Dropdown selection
+- `button` - Action triggers
+- `scene` - Scene activation
+- `script` - Script execution
+- `automation` - Enable/disable controls
+- `input_*` - Various input controls
+
+## Testing Considerations
+
+When making changes:
+- Test with various entity types and states
+- Verify persistence works (refresh page)
+- Check WebSocket reconnection on network issues
+- Test drag-and-drop across rooms and categories
+- Verify modal interactions don't affect main view state

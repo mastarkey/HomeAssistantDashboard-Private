@@ -70,6 +70,17 @@ export const useHomeAssistant = () => {
 
         // Subscribe to entities
         unsubscribeEntities = subscribeEntities(connection, (entities) => {
+          // DEBUG: Log Tesla entities
+          const teslaEntities = Object.entries(entities).filter(([id]) => 
+            id.toLowerCase().includes('tesla')
+          );
+          if (teslaEntities.length > 0) {
+            console.log('[DEBUG] Tesla entities from Home Assistant:', teslaEntities.map(([id, e]) => ({
+              id,
+              state: (e as any).state,
+              friendlyName: (e as any).attributes?.friendly_name
+            })));
+          }
           setState((prev) => ({ ...prev, entities }));
         });
 

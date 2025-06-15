@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
-import { Lightbulb, Power } from 'lucide-react';
-import DeviceModal from '../DeviceModal';
+import { Lightbulb, Power, Palette } from 'lucide-react';
+import LightModal from '../LightModal';
 
 interface LightCardProps {
   entityId: string;
@@ -24,11 +24,22 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
   
   const brightness = attributes.brightness;
   const brightnessPercent = brightness ? Math.round((brightness / 255) * 100) : 0;
-  const colorTemp = attributes.color_temp;
+  const colorTemp = attributes.color_temp_kelvin || attributes.color_temp;
   const rgbColor = attributes.rgb_color;
+  const hsColor = attributes.hs_color;
   const supportedFeatures = attributes.supported_features || 0;
+  const supportedColorModes = attributes.supported_color_modes || [];
+  const effectList = attributes.effect_list || [];
+  const currentEffect = attributes.effect;
   
-  const supportsColorTemp = (supportedFeatures & 2) !== 0 || colorTemp !== undefined;
+  // Check supported features
+  const supportsBrightness = (supportedFeatures & 1) !== 0 || supportedColorModes.includes('brightness');
+  const supportsColorTemp = (supportedFeatures & 2) !== 0 || supportedColorModes.includes('color_temp');
+  const supportsColor = (supportedFeatures & 16) !== 0 || 
+    supportedColorModes.includes('rgb') || 
+    supportedColorModes.includes('hs') || 
+    supportedColorModes.includes('xy');
+  const supportsEffects = (supportedFeatures & 4) !== 0 || effectList.length > 0;
   
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -46,19 +57,19 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
     }
   };
   
-  
-  const handleColorTempChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newColorTemp = parseInt(e.target.value);
+  const handleColorChange = async (color: { h: number; s: number; v: number }) => {
     if (isAdjusting) return;
     
     setIsAdjusting(true);
     try {
+      // Convert HSV to HS for Home Assistant (0-360, 0-100)
       await callService('light', 'turn_on', {
         entity_id: entityId,
-        color_temp: newColorTemp
+        hs_color: [color.h, color.s],
+        brightness_pct: Math.round(color.v)
       });
     } catch (error) {
-      console.error('Failed to adjust color temperature:', error);
+      console.error('Failed to change color:', error);
     } finally {
       setTimeout(() => setIsAdjusting(false), 100);
     }
@@ -67,9 +78,65 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
   const getBackgroundGradient = () => {
     if (state === 'off') return '';
     if (rgbColor) {
-      return `linear-gradient(135deg, rgba(${rgbColor[0]}, ${rgbColor[1]}, ${rgbColor[2]}, 0.2), transparent)`;
+      return `linear-gradient(135deg, rgba(${rgbColor[0]}, ${rgbColor[1]}, ${rgbColor[2]}, 0.3), rgba(${rgbColor[0]}, ${rgbColor[1]}, ${rgbColor[2]}, 0.05))`;
+    }
+    if (colorTemp && supportsColorTemp) {
+      // Warmer colors for lower kelvin values
+      const warmth = colorTemp < 3000 ? 'rgba(255, 140, 66, 0.2)' : 
+                     colorTemp < 4000 ? 'rgba(255, 209, 102, 0.2)' : 
+                     colorTemp < 5000 ? 'rgba(255, 255, 255, 0.2)' : 
+                     'rgba(107, 203, 255, 0.2)';
+      return `linear-gradient(135deg, ${warmth}, transparent)`;
     }
     return '';
+  };
+  
+  // Simple color wheel slider component
+  const ColorSlider = () => {
+    const hue = hsColor ? hsColor[0] : 0;
+    
+    return (
+      <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+        <div className="relative">
+          <input
+            type="range"
+            min="0"
+            max="360"
+            value={hue}
+            onChange={(e) => {
+              const newHue = parseInt(e.target.value);
+              handleColorChange({
+                h: newHue,
+                s: hsColor ? hsColor[1] : 100,
+                v: brightnessPercent
+              });
+            }}
+            className="w-full h-3 rounded-full appearance-none cursor-pointer
+                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 
+                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:bg-white 
+                     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer
+                     [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2
+                     [&::-webkit-slider-thumb]:border-gray-800"
+            style={{
+              background: `linear-gradient(to right, 
+                hsl(0, 100%, 50%), 
+                hsl(60, 100%, 50%), 
+                hsl(120, 100%, 50%), 
+                hsl(180, 100%, 50%), 
+                hsl(240, 100%, 50%), 
+                hsl(300, 100%, 50%), 
+                hsl(360, 100%, 50%))`
+            }}
+          />
+          {supportsEffects && currentEffect && (
+            <div className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+              <Palette className="w-3 h-3" />
+              <span>{currentEffect}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
   
   return (
@@ -99,10 +166,7 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
             </div>
           </div>
           <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggle(e);
-            }}
+            onClick={handleToggle}
             className={`p-2 rounded-lg transition-all ${
               state === 'on' 
                 ? 'bg-purple-600 hover:bg-purple-700 text-white' 
@@ -113,7 +177,7 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
           </button>
         </div>
         
-        {/* Brightness Control - Show for all lights */}
+        {/* Brightness Control - Always show for lights that support it */}
         {domain === 'light' && (
           <div className="mb-3">
             <input
@@ -125,12 +189,10 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
                 e.stopPropagation();
                 const value = parseInt(e.target.value);
                 if (value === 0) {
-                  // Turn off if dragged to 0
                   callService('light', 'turn_off', {
                     entity_id: entityId
                   });
                 } else {
-                  // Turn on with brightness
                   callService('light', 'turn_on', {
                     entity_id: entityId,
                     brightness_pct: value
@@ -153,41 +215,24 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
           </div>
         )}
         
-        {/* Color Temperature Control */}
-        {supportsColorTemp && state === 'on' && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-              <span>Warm</span>
-              <span>Cool</span>
-            </div>
-            <input
-              type="range"
-              min={attributes.min_mireds || 153}
-              max={attributes.max_mireds || 500}
-              value={colorTemp || 250}
-              onChange={(e) => {
-                e.stopPropagation();
-                handleColorTempChange(e);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full h-2 rounded-full appearance-none cursor-pointer"
-              style={{
-                background: 'linear-gradient(to right, #ff8c42, #ffd166, #ffffff, #6bcbff, #4a90e2)'
-              }}
-            />
-          </div>
-        )}
+        {/* Color Control - Show color slider if supported */}
+        {state === 'on' && supportsColor && <ColorSlider />}
         
         {/* Light Type */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500 uppercase tracking-wider">LIGHT</span>
+          {supportsEffects && effectList.length > 0 && (
+            <span className="text-xs text-purple-400">
+              {effectList.length} effects
+            </span>
+          )}
         </div>
       </div>
     </div>
     
-    {/* Device Modal */}
+    {/* Light Modal */}
     {showModal && (
-      <DeviceModal
+      <LightModal
         entityId={entityId}
         entity={entity}
         onClose={() => setShowModal(false)}

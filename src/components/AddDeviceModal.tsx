@@ -45,6 +45,16 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
   const groupedDevicesList = useMemo(() => {
     const grouped = groupEntitiesByDevice(entities, devices);
     console.log('[DEBUG] Grouped devices:', grouped.length);
+    
+    // DEBUG: Check if Tesla devices are in the list
+    const teslaDevices = grouped.filter(d => 
+      d.deviceName.toLowerCase().includes('tesla') || 
+      d.deviceId.toLowerCase().includes('tesla')
+    );
+    if (teslaDevices.length > 0) {
+      console.log('[DEBUG] Tesla devices found:', teslaDevices);
+    }
+    
     return grouped;
   }, [entities, devices]);
 
@@ -67,11 +77,21 @@ const AddDeviceModal: React.FC<AddDeviceModalProps> = ({
         device: selectedDevice,
         primaryEntity: selectedDevice.primaryEntity.entityId,
         deviceType: selectedDevice.deviceType,
-        room: selectedRoom
+        room: selectedRoom,
+        allEntities: selectedDevice.entities.map(e => e.entityId)
       });
       
-      // Always assign the primary entity
-      onAssign(selectedDevice.primaryEntity.entityId, selectedRoom);
+      // For devices with multiple entities (like EV chargers), assign all entities
+      if (selectedDevice.deviceType === 'EV Charger' || selectedDevice.deviceType === 'NAS') {
+        console.log('[DEBUG] Assigning all entities for special device type');
+        selectedDevice.entities.forEach(({ entityId }) => {
+          console.log(`[DEBUG] Assigning ${entityId} to ${selectedRoom}`);
+          onAssign(entityId, selectedRoom);
+        });
+      } else {
+        // For other devices, just assign the primary entity
+        onAssign(selectedDevice.primaryEntity.entityId, selectedRoom);
+      }
       onClose();
     }
   };

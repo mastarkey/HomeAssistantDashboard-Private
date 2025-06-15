@@ -57,7 +57,11 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdat
   let deviceTypeConfig = getDeviceTypeConfig(device, entities || { [entityId]: entity }, entityId);
   
   // FALLBACK: Check if this is a Tesla Wall Connector even without device registry
-  if (!deviceTypeConfig && entityId.toLowerCase().includes('tesla_wall_connector')) {
+  if (!deviceTypeConfig && 
+      (entityId.toLowerCase().includes('tesla_wall_connector') || 
+       entityId.toLowerCase().includes('wall_connector') ||
+       entity.attributes?.friendly_name?.toLowerCase().includes('tesla wall connector') ||
+       entity.attributes?.friendly_name?.toLowerCase().includes('wall connector'))) {
     console.log(`[DEBUG] Fallback detection for Tesla Wall Connector: ${entityId}`);
     // Find the EV charger config
     const evChargerConfig = getDeviceTypeById('ev_charger');

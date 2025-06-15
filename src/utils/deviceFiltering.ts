@@ -73,10 +73,20 @@ export function isPrimaryDevice(
   const friendlyName = entity.attributes?.friendly_name || '';
   const entityName = entityId.split('.')[1];
   
-  // FORCE SHOW Tesla Wall Connector entities - no matter what
-  if (entityId.toLowerCase().includes('tesla_wall_connector')) {
-    console.log(`[DEBUG] FORCE SHOWING Tesla entity: ${entityId}`);
-    return true;
+  // For Tesla Wall Connector, only show the status entity as primary
+  if (entityId.toLowerCase().includes('tesla_wall_connector') || 
+      entityId.toLowerCase().includes('wall_connector') ||
+      friendlyName.toLowerCase().includes('tesla wall connector') ||
+      friendlyName.toLowerCase().includes('wall connector')) {
+    
+    // Only show the status entity as the main card
+    if (entityId.endsWith('_status')) {
+      console.log(`[DEBUG] SHOWING primary Tesla status entity: ${entityId}`);
+      return true;
+    }
+    
+    console.log(`[DEBUG] HIDING secondary Tesla entity: ${entityId}`);
+    return false;
   }
   
   // DEBUG: Log sensor entities to see what's being filtered
@@ -272,7 +282,10 @@ export function isPrimaryDevice(
     console.log(`[DEBUG] Evaluating sensor: ${entityId}`);
     
     // ALWAYS show Tesla Wall Connector entities
-    if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+    if (entityId.toLowerCase().includes('tesla_wall_connector') || 
+        entityId.toLowerCase().includes('wall_connector') ||
+        friendlyName.toLowerCase().includes('tesla wall connector') ||
+        friendlyName.toLowerCase().includes('wall connector')) {
       console.log(`[DEBUG] ${entityId} is Tesla Wall Connector - FORCE SHOW`);
       return true;
     }

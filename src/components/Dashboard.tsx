@@ -196,6 +196,18 @@ const Dashboard: React.FC = () => {
     console.log('[DEBUG] Computing displayedEntities for room:', selectedRoom, 'view:', view);
     if (!allEntities) return [];
     
+    // DEBUG: Check if Tesla entities exist in allEntities
+    if (selectedRoom === 'other') {
+      const teslaEntities = Object.entries(allEntities).filter(([id]) => 
+        id.toLowerCase().includes('tesla_wall_connector')
+      );
+      console.log('[DEBUG] Tesla entities in allEntities:', teslaEntities.map(([id, e]) => ({
+        id,
+        state: (e as any).state,
+        friendlyName: (e as any).attributes?.friendly_name
+      })));
+    }
+    
     let filtered: [string, any][] = [];
     
     if (view === 'rooms' && selectedRoom) {
@@ -205,10 +217,14 @@ const Dashboard: React.FC = () => {
       if (selectedRoom === 'other') {
         // Add any Tesla Wall Connector entities that might have been missed
         Object.entries(allEntities).forEach(([entityId, entity]) => {
-          if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+          const friendlyName = (entity as any).attributes?.friendly_name || '';
+          if (entityId.toLowerCase().includes('tesla_wall_connector') || 
+              entityId.toLowerCase().includes('wall_connector') ||
+              friendlyName.toLowerCase().includes('tesla wall connector') ||
+              friendlyName.toLowerCase().includes('wall connector')) {
             const exists = filtered.some(([id]) => id === entityId);
             if (!exists) {
-              console.log(`[DEBUG] FORCE ADDING Tesla entity to Other room: ${entityId}`);
+              console.log(`[DEBUG] FORCE ADDING Tesla/Wall Connector entity to Other room: ${entityId}`);
               filtered.push([entityId, entity]);
             }
           }
@@ -250,6 +266,16 @@ const Dashboard: React.FC = () => {
     const visibleDevices = primaryDevices.filter(([entityId, entity]) => {
       const override = getEntityOverride(entityId);
       if (override?.hidden) return false;
+      
+      // ALWAYS show Tesla Wall Connector entities
+      const friendlyName = entity.attributes?.friendly_name || '';
+      if (entityId.toLowerCase().includes('tesla_wall_connector') || 
+          entityId.toLowerCase().includes('wall_connector') ||
+          friendlyName.toLowerCase().includes('tesla wall connector') ||
+          friendlyName.toLowerCase().includes('wall connector')) {
+        console.log(`[DEBUG] Keeping Tesla Wall Connector entity visible: ${entityId}`);
+        return true;
+      }
       
       // Use improved detection logic that doesn't rely on friendly names
       const device = devices ? getDeviceForEntity(entityId, allEntities, devices) : null;
@@ -779,6 +805,31 @@ const Dashboard: React.FC = () => {
                       <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p className="text-lg">No devices in this {view === 'rooms' ? 'room' : 'category'}</p>
                       <p className="text-sm mt-2">Add devices using the "Add Device" button above</p>
+                      
+                      {/* Debug: Check for Tesla entities in overrides */}
+                      {selectedRoom === 'other' && (() => {
+                        const teslaInOverrides = getEntityOverride ? 
+                          Object.keys(allEntities || {}).map(id => ({ id, override: getEntityOverride(id) }))
+                            .filter(item => item.override?.room === 'other' && item.id.toLowerCase().includes('tesla_wall_connector'))
+                          : [];
+                        
+                        if (teslaInOverrides.length > 0) {
+                          return (
+                            <div className="mt-4 p-4 bg-red-900/20 border border-red-800 rounded-lg text-left">
+                              <p className="text-red-400 font-medium mb-2">Debug: Tesla entities assigned but not displaying</p>
+                              {teslaInOverrides.map((item) => (
+                                <div key={item.id} className="text-xs text-red-300 mb-1">
+                                  {item.id} - Room: {item.override?.room}
+                                </div>
+                              ))}
+                              <p className="text-xs text-yellow-400 mt-2">
+                                These entities are assigned to this room but not found in Home Assistant entities.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 )}

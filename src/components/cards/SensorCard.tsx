@@ -14,20 +14,16 @@ const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity, onEntityUpdat
   const [showEditModal, setShowEditModal] = useState(false);
   
   // SPECIAL CASE: Check if this is a Tesla Wall Connector sensor
-  // If so, import and use EVChargerCard instead
+  // If so, we should not render this as a sensor card
+  // The EntityCard component should handle routing to EVChargerCard
   if (entityId.toLowerCase().includes('tesla_wall_connector')) {
-    console.log(`[DEBUG] SensorCard detected Tesla entity ${entityId}, redirecting to EVChargerCard`);
-    const EVChargerCard = React.lazy(() => import('./EVChargerCard'));
+    console.log(`[DEBUG] SensorCard detected Tesla entity ${entityId}, this should have been handled by EntityCard`);
+    // Return a placeholder - this shouldn't happen if EntityCard is working correctly
     return (
-      <React.Suspense fallback={<div className="bg-gray-800/50 rounded-2xl p-4 animate-pulse h-32" />}>
-        <EVChargerCard 
-          entityId={entityId} 
-          entity={entity} 
-          onEntityUpdate={onEntityUpdate} 
-          rooms={rooms} 
-          isCustom={isCustom} 
-        />
-      </React.Suspense>
+      <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4">
+        <p className="text-yellow-400">Tesla Wall Connector (fallback)</p>
+        <p className="text-xs text-gray-400">{entityId}</p>
+      </div>
     );
   }
   

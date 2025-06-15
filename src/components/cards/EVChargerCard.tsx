@@ -8,7 +8,8 @@ import {
   MoreVertical,
   Activity,
   Gauge,
-  Clock
+  Clock,
+  PlugZap
 } from 'lucide-react';
 import EVChargerModal from '../EVChargerModal';
 
@@ -25,14 +26,30 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
   const [isControlling, setIsControlling] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
+  // DEBUG: Log when component is rendered
+  console.log(`[DEBUG] EVChargerCard rendering for ${entityId}`, {
+    state: entity.state,
+    attributes: entity.attributes,
+    domain: entityId.split('.')[0]
+  });
+  
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
   const attributes = entity.attributes || {};
   
-  // Common EV charger states
-  const isCharging = state === 'charging' || attributes.charging_status === 'charging';
-  const isConnected = state === 'connected' || attributes.vehicle_connected === true || attributes.charging_status === 'connected';
-  const isAvailable = state === 'available' || state === 'on' || (!isCharging && !isConnected);
+  // Common EV charger states - handle sensor entities that might have numeric states
+  const domain = entityId.split('.')[0];
+  const isSensor = domain === 'sensor' || domain === 'binary_sensor';
+  
+  // For sensor entities, check attributes or use default states
+  const isCharging = state === 'charging' || attributes.charging_status === 'charging' || 
+                    (isSensor && parseFloat(state) > 0 && !isNaN(parseFloat(state)));
+  const isConnected = state === 'connected' || attributes.vehicle_connected === true || 
+                     attributes.charging_status === 'connected' || 
+                     (isSensor && attributes.vehicle_connected);
+  const isAvailable = state === 'available' || state === 'on' || 
+                     (isSensor && !attributes.vehicle_connected && state !== 'unavailable') || 
+                     (!isCharging && !isConnected);
   const isOff = state === 'off' || state === 'unavailable';
   
   // Power and energy metrics
@@ -45,34 +62,76 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
   // Time metrics
   const chargingTime = attributes.charging_time || attributes.session_time || null;
   
-  // Find related entities
+  // Find related entities - for Tesla Wall Connector, search more broadly
   const findRelatedEntity = (pattern: RegExp): any => {
     if (!entities) return null;
+    
+    // For Tesla Wall Connector, search all Tesla entities
+    if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+      const allTeslaEntities = Object.keys(entities).filter(id => 
+        id.toLowerCase().includes('tesla_wall_connector')
+      );
+      
+      console.log(`[DEBUG] Looking for pattern ${pattern} in Tesla entities:`, allTeslaEntities);
+      
+      const relatedId = allTeslaEntities.find(id => pattern.test(id));
+      if (relatedId) {
+        console.log(`[DEBUG] Found related entity: ${relatedId} = ${entities[relatedId].state}`);
+      }
+      return relatedId ? entities[relatedId] : null;
+    }
+    
+    // For other chargers, use the original logic
     const relatedId = Object.keys(entities).find(id => 
       id.includes(entityId.split('.')[1]) && pattern.test(id)
     );
     return relatedId ? entities[relatedId] : null;
   };
   
-  // Try to find related sensor entities
-  const powerSensor = findRelatedEntity(/_(power|charging_power)$/);
-  const energySensor = findRelatedEntity(/_(energy|session_energy)$/);
-  const currentSensor = findRelatedEntity(/_(current|charging_current)$/);
-  const statusSensor = findRelatedEntity(/_(status|charging_status)$/);
+  // Try to find related sensor entities - add Tesla-specific patterns
+  const powerSensor = findRelatedEntity(/_(power|charging_power|grid_power)$/);
+  const energySensor = findRelatedEntity(/_(energy|session_energy|grid_frequency)$/);
+  const currentSensor = findRelatedEntity(/_(current|charging_current|phase_[abc]_current)$/);
+  const statusSensor = findRelatedEntity(/_(status|charging_status|handle_temperature|mcu_temperature|pcba_temperature)$/);
+  const vehicleConnectedSensor = findRelatedEntity(/vehicle_connected$/);
+  const voltagePhaseASensor = findRelatedEntity(/phase_a_voltage$/);
+  const contactor = findRelatedEntity(/contactor_closed$/);
   
   // Get actual values from sensors if available
   const actualPower = powerSensor?.state ? parseFloat(powerSensor.state) : chargingPower;
   const actualEnergy = energySensor?.state ? parseFloat(energySensor.state) : energyDelivered;
   const actualCurrent = currentSensor?.state ? parseFloat(currentSensor.state) : currentCurrent;
   const actualStatus = statusSensor?.state || state;
+  const isVehicleConnected = vehicleConnectedSensor?.state === 'on' || vehicleConnectedSensor?.state === true;
+  const actualVoltage = voltagePhaseASensor?.state ? parseFloat(voltagePhaseASensor.state) : voltage;
+  const isContactorClosed = contactor?.state === 'on' || contactor?.state === true;
   
-  // Determine actual charging state
+  // Count related Tesla entities
+  const relatedTeslaCount = entities ? Object.keys(entities).filter(id => 
+    id.toLowerCase().includes('tesla_wall_connector') && id !== entityId
+  ).length : 0;
+  
+  // Determine actual charging state - Tesla-specific logic
   const getChargingState = () => {
+    // For Tesla Wall Connector
+    if (entityId.toLowerCase().includes('tesla_wall_connector')) {
+      if (isContactorClosed && actualCurrent > 0) return 'charging';
+      if (isVehicleConnected) return 'connected';
+      return 'available';
+    }
+    
+    // For other chargers
     if (actualStatus === 'charging' || isCharging) return 'charging';
     if (actualStatus === 'connected' || actualStatus === 'plugged_in' || isConnected) return 'connected';
     if (actualStatus === 'available' || actualStatus === 'ready' || isAvailable) return 'available';
-    if (actualStatus === 'off' || isOff) return 'off';
-    return actualStatus;
+    if (actualStatus === 'off' || actualStatus === 'unavailable' || isOff) return 'off';
+    // For sensor entities with numeric states, determine based on value
+    if (isSensor && !isNaN(parseFloat(actualStatus))) {
+      const value = parseFloat(actualStatus);
+      if (value > 0) return 'charging';
+      return 'available';
+    }
+    return actualStatus || 'off';
   };
   
   const chargingState = getChargingState();
@@ -174,49 +233,75 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
             </button>
           </div>
           
-          {/* Charging Info */}
-          {chargingState === 'charging' && (
-            <div className="bg-gray-700/30 rounded-lg p-3 mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400" />
-                  <span className="text-sm text-white font-medium">{formatPower(actualPower)}</span>
-                </div>
+          {/* Status Display */}
+          <div className="bg-gray-700/30 rounded-lg p-3 mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                {chargingState === 'charging' ? (
+                  <>
+                    <Zap className="w-4 h-4 text-yellow-400 animate-pulse" />
+                    <span className="text-sm text-white font-medium">Charging</span>
+                  </>
+                ) : chargingState === 'connected' ? (
+                  <>
+                    <Car className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm text-white font-medium">Vehicle Connected</span>
+                  </>
+                ) : (
+                  <>
+                    <Power className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-300">Ready</span>
+                  </>
+                )}
+              </div>
+              {chargingState === 'charging' && actualPower > 0 && (
+                <span className="text-sm text-yellow-400 font-medium">{formatPower(actualPower)}</span>
+              )}
+            </div>
+            
+            {/* Power/Energy Display */}
+            {(chargingState === 'charging' || actualEnergy > 0) && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {actualEnergy > 0 && (
+                  <div className="flex items-center gap-1">
+                    <BatteryCharging className="w-3 h-3 text-green-400" />
+                    <span className="text-xs text-gray-300">{formatEnergy(actualEnergy)}</span>
+                  </div>
+                )}
                 {chargingTime && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-gray-400" />
+                  <div className="flex items-center gap-1 justify-end">
+                    <Clock className="w-3 h-3 text-gray-400" />
                     <span className="text-xs text-gray-400">{formatTime(chargingTime)}</span>
                   </div>
                 )}
               </div>
-              {actualEnergy > 0 && (
-                <div className="flex items-center gap-2">
-                  <BatteryCharging className="w-4 h-4 text-green-400" />
-                  <span className="text-xs text-gray-300">{formatEnergy(actualEnergy)} delivered</span>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
           
           {/* Quick Stats */}
-          {(chargingState === 'connected' || chargingState === 'charging') && (
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div className="bg-gray-700/30 rounded-lg p-2">
-                <div className="flex items-center gap-1 mb-1">
-                  <Activity className="w-3 h-3 text-gray-400" />
-                  <span className="text-xs text-gray-400">Current</span>
-                </div>
-                <p className="text-sm text-white font-medium">{actualCurrent} A</p>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-gray-700/30 rounded-lg p-2">
+              <div className="flex items-center gap-1 mb-1">
+                <Activity className="w-3 h-3 text-gray-400" />
+                <span className="text-[10px] text-gray-400">Current</span>
               </div>
-              <div className="bg-gray-700/30 rounded-lg p-2">
-                <div className="flex items-center gap-1 mb-1">
-                  <Gauge className="w-3 h-3 text-gray-400" />
-                  <span className="text-xs text-gray-400">Max</span>
-                </div>
-                <p className="text-sm text-white font-medium">{maxCurrent} A</p>
-              </div>
+              <p className="text-sm text-white font-medium">{actualCurrent || 0} A</p>
             </div>
-          )}
+            <div className="bg-gray-700/30 rounded-lg p-2">
+              <div className="flex items-center gap-1 mb-1">
+                <Gauge className="w-3 h-3 text-gray-400" />
+                <span className="text-[10px] text-gray-400">Voltage</span>
+              </div>
+              <p className="text-sm text-white font-medium">{Math.round(actualVoltage || 0)} V</p>
+            </div>
+            <div className="bg-gray-700/30 rounded-lg p-2">
+              <div className="flex items-center gap-1 mb-1">
+                <PlugZap className="w-3 h-3 text-gray-400" />
+                <span className="text-[10px] text-gray-400">Max</span>
+              </div>
+              <p className="text-sm text-white font-medium">{maxCurrent || 32} A</p>
+            </div>
+          </div>
           
           {/* Quick Controls */}
           <div className="space-y-2">
@@ -248,7 +333,7 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
               </button>
             )}
             
-            {chargingState === 'off' && (
+            {chargingState === 'off' && !isSensor && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -265,8 +350,8 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
           {/* Type Label */}
           <div className="flex items-center justify-between mt-3">
             <span className="text-xs text-gray-500 uppercase tracking-wider">EV CHARGER</span>
-            {chargingState !== 'off' && chargingState !== 'available' && (
-              <span className="text-xs text-gray-400">{voltage}V</span>
+            {entityId.includes('tesla_wall_connector') && relatedTeslaCount > 0 && (
+              <span className="text-xs text-gray-400">+{relatedTeslaCount} sensors</span>
             )}
           </div>
         </div>

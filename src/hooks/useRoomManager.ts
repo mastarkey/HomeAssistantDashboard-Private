@@ -90,8 +90,8 @@ export function useRoomManager(
       if (isRoomHidden(room.id)) {
         return false;
       }
-      // Don't show "other" room unless it has many devices
-      if (room.id === 'other' && room.entityCount <= 5) {
+      // Always show "other" room if it has any devices
+      if (room.id === 'other' && room.entityCount === 0) {
         return false;
       }
       return true;

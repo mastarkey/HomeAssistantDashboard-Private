@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import MediaPlayerModal from '../MediaPlayerModal';
 import { getDeviceForEntity, getDeviceType } from '../../utils/deviceRegistry';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface MediaPlayerCardProps {
   entityId: string;
@@ -24,9 +25,21 @@ interface MediaPlayerCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const MediaPlayerCard: React.FC<MediaPlayerCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+const MediaPlayerCard: React.FC<MediaPlayerCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms = [], 
+  isCustom = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService, devices, entities } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -168,9 +181,14 @@ const MediaPlayerCard: React.FC<MediaPlayerCardProps> = ({ entityId, entity, onE
   
   return (
     <>
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      >
       <div 
         className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative overflow-hidden"
-        onClick={() => setShowModal(true)}
+        onClick={isSelectionMode ? undefined : () => setShowModal(true)}
       >
       {/* Background gradient for playing state */}
       {isPlaying && (
@@ -187,6 +205,7 @@ const MediaPlayerCard: React.FC<MediaPlayerCardProps> = ({ entityId, entity, onE
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-white font-medium truncate">{friendlyName}</h3>
+              <p className="text-xs text-gray-500 truncate">{entityId}</p>
               <p className="text-xs text-gray-400">
                 {isOff ? 'Off' : isPaused ? 'Paused' : isPlaying ? 'Playing' : state}
                 {source && ` • ${source}`}
@@ -327,6 +346,7 @@ const MediaPlayerCard: React.FC<MediaPlayerCardProps> = ({ entityId, entity, onE
       </div>
     </div>
       
+      </SelectionOverlay>
       {/* Media Player Modal */}
       {showModal && (
         <MediaPlayerModal

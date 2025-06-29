@@ -13,6 +13,9 @@ import {
   Sun,
 } from 'lucide-react';
 import EditDeviceModal from './EditDeviceModal';
+import { DeviceInfoSection } from './DeviceInfoSection';
+import { getDeviceForEntity } from '../utils/deviceRegistry';
+import { useCustomCategories } from '../hooks/useCustomCategories';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -54,11 +57,21 @@ interface HistoryData {
 }
 
 const ClimateModal: React.FC<ClimateModalProps> = ({ entityId, entity, onClose, onEntityUpdate, rooms = [], isCustom = false }) => {
-  const { callService, connection } = useHomeAssistant();
+  const { callService, connection, entities, devices, areas } = useHomeAssistant();
+  const { customCategories } = useCustomCategories();
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [history, setHistory] = useState<HistoryData[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
+  
+  const device = entities && devices ? getDeviceForEntity(entityId, entities, devices) : null;
+  
+  const handleCategoryAssign = (categoryId: string) => {
+    // This would need to be implemented based on how you want to store category assignments
+    // For now, we'll just log it
+    console.log(`Assigning ${entityId} to category ${categoryId}`);
+    // You could emit an event or call a hook to save this assignment
+  };
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -416,6 +429,18 @@ const ClimateModal: React.FC<ClimateModalProps> = ({ entityId, entity, onClose, 
                 );
               })}
             </div>
+          </div>
+          
+          {/* Device Information */}
+          <div className="p-6 border-t border-gray-800">
+            <DeviceInfoSection
+              entityId={entityId}
+              entity={entity}
+              device={device}
+              areas={areas}
+              onCategoryAssign={handleCategoryAssign}
+              categories={customCategories}
+            />
           </div>
         </div>
       </div>

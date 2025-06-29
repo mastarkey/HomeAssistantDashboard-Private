@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
 import { Thermometer, Droplets, Fan, Power, Minus, Plus, MoreVertical, Flame, Snowflake, Wind } from 'lucide-react';
 import ClimateModal from '../ClimateModal';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface ClimateCardProps {
   entityId: string;
@@ -9,9 +10,21 @@ interface ClimateCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+const ClimateCard: React.FC<ClimateCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms = [], 
+  isCustom = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService } = useHomeAssistant();
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -95,14 +108,20 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity, onEntityUpd
   
   return (
     <>
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      >
       <div 
-        onClick={() => setShowModal(true)}
+        onClick={isSelectionMode ? undefined : () => setShowModal(true)}
         className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group min-h-[200px] cursor-pointer"
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-white font-medium text-lg">{friendlyName}</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-white font-medium text-lg truncate">{friendlyName}</h3>
+            <p className="text-xs text-gray-500 truncate">{entityId}</p>
             <div className="flex items-center gap-2 mt-1">
               <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-md ${getModeBackground()}`}>
                 <span className={getModeColor()}>
@@ -267,7 +286,8 @@ const ClimateCard: React.FC<ClimateCardProps> = ({ entityId, entity, onEntityUpd
       </div>
     </div>
     
-    {/* Climate Modal */}
+    </SelectionOverlay>
+      {/* Climate Modal */}
     {showModal && (
       <ClimateModal
         entityId={entityId}

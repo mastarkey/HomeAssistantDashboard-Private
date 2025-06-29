@@ -20,23 +20,25 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Kill any existing process on port 5173
+# Kill any existing Vite process on port 5173
 if lsof -Pi :5173 -sTCP:LISTEN -t >/dev/null ; then
     echo -e "${YELLOW}🔄 Stopping existing dev server...${NC}"
-    lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+    # Only kill node processes (Vite), not the bash script
+    lsof -ti:5173 | xargs ps -p 2>/dev/null | grep -E 'node|vite' | awk '{print $1}' | xargs kill -9 2>/dev/null || true
     sleep 2
 fi
 
 echo -e "${GREEN}✅ Starting development server...${NC}"
-echo -e "${BLUE}📱 Local URL: http://localhost:5173${NC}"
-echo -e "${BLUE}🏠 Network URL: http://192.168.1.7:5173${NC}"
-echo -e "${BLUE}📊 Home Assistant: http://192.168.1.7:8123${NC}"
+echo ""
+echo -e "${YELLOW}⚠️  IMPORTANT: Access the dev server from YOUR COMPUTER, not from Home Assistant!${NC}"
+echo ""
+echo -e "${BLUE}📱 Open in your browser: ${GREEN}http://localhost:5173${NC}"
+echo -e "${BLUE}🏠 Alternative (if on same network): http://$(hostname -I | awk '{print $1}'):5173${NC}"
 echo ""
 echo -e "${YELLOW}💡 Tips:${NC}"
+echo "  - This is NOT accessible from ${YELLOW}192.168.1.7:5173${NC} (that's your HA server)"
 echo "  - Changes will auto-reload (HMR enabled)"
-echo "  - Press 'q' to quit"
-echo "  - Press 'r' to restart"
-echo "  - Press 'h' to show help"
+echo "  - Production version remains at: http://192.168.1.7:8123 → React Dashboard"
 echo ""
 
 # Start the dev server

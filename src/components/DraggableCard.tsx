@@ -7,9 +7,10 @@ interface DraggableCardProps {
   id: string;
   children: React.ReactNode;
   showHandle?: boolean;
+  isSelectionMode?: boolean;
 }
 
-const DraggableCard: React.FC<DraggableCardProps> = ({ id, children, showHandle = true }) => {
+const DraggableCard: React.FC<DraggableCardProps> = ({ id, children, showHandle = true, isSelectionMode = false }) => {
   const {
     attributes,
     listeners,
@@ -17,7 +18,7 @@ const DraggableCard: React.FC<DraggableCardProps> = ({ id, children, showHandle 
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled: isSelectionMode });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -30,7 +31,7 @@ const DraggableCard: React.FC<DraggableCardProps> = ({ id, children, showHandle 
       style={style}
       className={`relative ${isDragging ? 'z-50' : ''}`}
     >
-      {showHandle && (
+      {showHandle && !isSelectionMode && (
         <div
           {...attributes}
           {...listeners}

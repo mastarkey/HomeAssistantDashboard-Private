@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
 import { Fan, Power, Wind, MoreVertical } from 'lucide-react';
-import EditDeviceModal from '../EditDeviceModal';
+import FanModal from '../FanModal';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface FanCardProps {
   entityId: string;
@@ -9,12 +10,24 @@ interface FanCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const FanCard: React.FC<FanCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+const FanCard: React.FC<FanCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms = [], 
+  isCustom = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -64,7 +77,14 @@ const FanCard: React.FC<FanCardProps> = ({ entityId, entity, onEntityUpdate, roo
   
   return (
     <>
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative">
+    <SelectionOverlay
+      isSelectionMode={isSelectionMode}
+      isSelected={isSelected}
+      onSelectionToggle={onSelectionToggle}
+    >
+    <div 
+      onClick={isSelectionMode ? undefined : () => setShowModal(true)}
+      className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative cursor-pointer">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${isOn ? 'bg-green-500' : 'bg-gray-600'}`}></div>
@@ -80,7 +100,7 @@ const FanCard: React.FC<FanCardProps> = ({ entityId, entity, onEntityUpdate, roo
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setShowEditModal(true);
+              setShowModal(true);
             }}
             className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
           >
@@ -142,13 +162,14 @@ const FanCard: React.FC<FanCardProps> = ({ entityId, entity, onEntityUpdate, roo
         <span className="text-xs text-gray-500 uppercase tracking-wider">FAN</span>
       </div>
     </div>
+    </SelectionOverlay>
     
-    {showEditModal && onEntityUpdate && (
-      <EditDeviceModal
+    {showModal && (
+      <FanModal
         entityId={entityId}
         entity={entity}
-        onClose={() => setShowEditModal(false)}
-        onSave={onEntityUpdate}
+        onClose={() => setShowModal(false)}
+        onEntityUpdate={onEntityUpdate}
         rooms={rooms}
         isCustom={isCustom}
       />

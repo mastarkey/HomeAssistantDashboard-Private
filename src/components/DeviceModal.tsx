@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useHomeAssistant } from '../hooks/useHomeAssistant';
 import { X, Trash2, Lightbulb, ToggleLeft, ToggleRight, Edit2 } from 'lucide-react';
 import { getRelatedEntities } from '../utils/deviceFiltering';
+import { getDeviceForEntity } from '../utils/deviceRegistry';
+import { useCustomCategories } from '../hooks/useCustomCategories';
 import EditDeviceModal from './EditDeviceModal';
+import { DeviceInfoSection } from './DeviceInfoSection';
 
 interface DeviceModalProps {
   entityId: string;
@@ -14,13 +17,17 @@ interface DeviceModalProps {
 }
 
 const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose, onEntityUpdate, rooms = [], isCustom = false }) => {
-  const { callService, entities } = useHomeAssistant();
+  const { callService, entities, devices, areas } = useHomeAssistant();
+  const { customCategories } = useCustomCategories();
   const [showEditModal, setShowEditModal] = useState(false);
   const [localState, setLocalState] = useState({
     brightness: 0,
     colorTemp: 0,
     rgbColor: [255, 255, 255] as [number, number, number],
   });
+
+  // Get device information
+  const device = getDeviceForEntity(entityId, entities || {}, devices);
 
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
@@ -97,6 +104,12 @@ const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose, on
     } catch (error) {
       console.error('Failed to activate scene:', error);
     }
+  };
+
+  const handleCategoryAssign = (categoryId: string) => {
+    // TODO: Implement category assignment logic
+    console.log('Assigning entity to category:', categoryId);
+    // This would typically involve updating entity overrides or custom metadata
   };
 
   // Format last updated time
@@ -296,6 +309,16 @@ const DeviceModal: React.FC<DeviceModalProps> = ({ entityId, entity, onClose, on
                 </pre>
               </div>
             </div>
+
+            {/* Device Info Section */}
+            <DeviceInfoSection
+              entityId={entityId}
+              entity={entity}
+              device={device}
+              areas={areas}
+              onCategoryAssign={handleCategoryAssign}
+              categories={customCategories}
+            />
           </div>
         </div>
 

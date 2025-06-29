@@ -10,6 +10,7 @@ import {
   Settings
 } from 'lucide-react';
 import EditDeviceModal from './EditDeviceModal';
+import { SelectionOverlay } from './cards/SelectionOverlay';
 
 // Import specialized cards
 import ClimateCard from './cards/ClimateCard';
@@ -35,13 +36,30 @@ interface EntityCardProps {
   entityId: string;
   entity: any;
   onEntityUpdate?: (entityId: string, updates: any) => void;
+  onDelete?: (entityId: string) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
+const EntityCard: React.FC<EntityCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  onDelete,
+  rooms, 
+  isCustom,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { entities, devices } = useHomeAssistant();
   const domain = entityId.split('.')[0];
+  
+  // @ts-ignore - onDelete will be passed through to child components
+  onDelete;
   
   // DEBUG: Log Tesla entities
   if (entityId.toLowerCase().includes('tesla')) {
@@ -86,9 +104,27 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdat
     switch (deviceTypeConfig.id) {
       case 'ev_charger':
         console.log(`[DEBUG] Using EVChargerCard for ${entityId}`);
-        return <EVChargerCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+        return <EVChargerCard 
+          entityId={entityId} 
+          entity={entity} 
+          onEntityUpdate={onEntityUpdate} 
+          rooms={rooms || []} 
+          isCustom={isCustom}
+          isSelectionMode={isSelectionMode}
+          isSelected={isSelected}
+          onSelectionToggle={onSelectionToggle}
+        />;
       case 'nas':
-        return <NASCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+        return <NASCard 
+          entityId={entityId} 
+          entity={entity} 
+          onEntityUpdate={onEntityUpdate} 
+          rooms={rooms || []} 
+          isCustom={isCustom}
+          isSelectionMode={isSelectionMode}
+          isSelected={isSelected}
+          onSelectionToggle={onSelectionToggle}
+        />;
       default:
         // Use generic device card for other device types
         return (
@@ -98,7 +134,10 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdat
             deviceType={deviceTypeConfig}
             onEntityUpdate={onEntityUpdate} 
             rooms={rooms || []} 
-            isCustom={isCustom} 
+            isCustom={isCustom}
+            isSelectionMode={isSelectionMode}
+            isSelected={isSelected}
+            onSelectionToggle={onSelectionToggle}
           />
         );
     }
@@ -107,36 +146,154 @@ const EntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdat
   // Fall back to specialized cards for specific domains
   switch (domain) {
     case 'climate':
-      return <ClimateCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <ClimateCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'weather':
-      return <WeatherCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <WeatherCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'media_player':
-      return <MediaPlayerCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <MediaPlayerCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'light':
-      return <LightCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <LightCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'camera':
-      return <CameraCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <CameraCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'switch':
-      return <SwitchCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <SwitchCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'sensor':
     case 'binary_sensor':
-      return <SensorCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <SensorCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'cover':
-      return <CoverCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <CoverCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'lock':
-      return <LockCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <LockCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'fan':
-      return <FanCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <FanCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     case 'vacuum':
-      return <VacuumCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <VacuumCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
     default:
       // Fall back to generic entity card for other domains
-      return <GenericEntityCard entityId={entityId} entity={entity} onEntityUpdate={onEntityUpdate} rooms={rooms || []} isCustom={isCustom} />;
+      return <GenericEntityCard 
+        entityId={entityId} 
+        entity={entity} 
+        onEntityUpdate={onEntityUpdate} 
+        rooms={rooms || []} 
+        isCustom={isCustom}
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      />;
   }
 };
 
 // Generic card for switches, sensors, and other entities
-const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
+const GenericEntityCard: React.FC<EntityCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  onDelete,
+  rooms, 
+  isCustom,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService } = useHomeAssistant();
   const [isToggling, setIsToggling] = React.useState(false);
   const [showEditModal, setShowEditModal] = React.useState(false);
@@ -222,13 +379,20 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
   if (isToggleable) {
     return (
       <>
-        <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+        <SelectionOverlay
+          isSelectionMode={isSelectionMode}
+          isSelected={isSelected}
+          onSelectionToggle={onSelectionToggle}
+        >
+          <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative"
+          >
+          
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
               <span className="text-white font-medium">{friendlyName}</span>
             </div>
-            {onEntityUpdate && (
+            {onEntityUpdate && !isSelectionMode && (
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -246,11 +410,11 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             <span className="text-xs text-gray-500 uppercase tracking-wider">{domain}</span>
             <button
               onClick={handleToggle}
-              disabled={isToggling}
+              disabled={isToggling || isSelectionMode}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${
                 state === 'on' ? 'bg-purple-600' : 'bg-gray-700'
               } ${
-                isToggling ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+                isToggling || isSelectionMode ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105'
               }`}
             >
               <span
@@ -261,6 +425,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             </button>
           </div>
         </div>
+        </SelectionOverlay>
         
         {/* Edit Device Modal */}
         {showEditModal && onEntityUpdate && (
@@ -269,6 +434,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             entity={entity}
             onClose={() => setShowEditModal(false)}
             onSave={onEntityUpdate}
+            onDelete={onDelete}
             rooms={rooms || []}
             isCustom={isCustom}
           />
@@ -281,10 +447,16 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
   if (isActivatable) {
     return (
       <>
-        <div 
-          onClick={handleActivate}
-          className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer"
+        <SelectionOverlay
+          isSelectionMode={isSelectionMode}
+          isSelected={isSelected}
+          onSelectionToggle={onSelectionToggle}
         >
+          <div 
+            onClick={!isSelectionMode ? handleActivate : undefined}
+            className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative"
+          >
+          
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
@@ -292,7 +464,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
               </div>
               <span className="text-white font-medium">{friendlyName}</span>
             </div>
-            {onEntityUpdate && (
+            {onEntityUpdate && !isSelectionMode && (
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -311,6 +483,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             <span className="text-xs text-gray-500 uppercase tracking-wider">{domain}</span>
           </div>
         </div>
+        </SelectionOverlay>
         
         {/* Edit Device Modal */}
         {showEditModal && onEntityUpdate && (
@@ -319,6 +492,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             entity={entity}
             onClose={() => setShowEditModal(false)}
             onSave={onEntityUpdate}
+            onDelete={onDelete}
             rooms={rooms || []}
             isCustom={isCustom}
           />
@@ -334,7 +508,14 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
     
     return (
       <>
-        <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+        <SelectionOverlay
+          isSelectionMode={isSelectionMode}
+          isSelected={isSelected}
+          onSelectionToggle={onSelectionToggle}
+        >
+          <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative"
+          >
+          
           <div className="flex items-start justify-between mb-3">
             <span className="text-white font-medium">{friendlyName}</span>
             <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
@@ -356,6 +537,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             <span className="text-xs text-gray-500 uppercase tracking-wider">SENSOR</span>
           </div>
         </div>
+        </SelectionOverlay>
         
         {/* Edit Device Modal */}
         {showEditModal && onEntityUpdate && (
@@ -364,6 +546,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
             entity={entity}
             onClose={() => setShowEditModal(false)}
             onSave={onEntityUpdate}
+            onDelete={onDelete}
             rooms={rooms || []}
             isCustom={isCustom}
           />
@@ -375,13 +558,20 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
   // Default card for unknown entities
   return (
     <>
-      <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
+      >
+        <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative"
+        >
+        
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-full ${getStateColor()}`}></div>
             <span className="text-white font-medium">{friendlyName}</span>
           </div>
-          {onEntityUpdate && (
+          {onEntityUpdate && !isSelectionMode && (
             <button 
               onClick={(e) => {
                 e.stopPropagation();
@@ -403,6 +593,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
           <span className="text-xs text-gray-500 uppercase tracking-wider">{domain.replace('_', ' ')}</span>
         </div>
       </div>
+      </SelectionOverlay>
       
       {/* Edit Device Modal */}
       {showEditModal && onEntityUpdate && (
@@ -411,6 +602,7 @@ const GenericEntityCard: React.FC<EntityCardProps> = ({ entityId, entity, onEnti
           entity={entity}
           onClose={() => setShowEditModal(false)}
           onSave={onEntityUpdate}
+          onDelete={onDelete}
           rooms={rooms || []}
           isCustom={isCustom}
         />

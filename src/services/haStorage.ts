@@ -16,10 +16,15 @@ export class HAStorage {
   private storageCollection = 'react_dashboard';
   private cache: Map<string, any> = new Map();
   private isLoaded = false;
+  private loadPromise: Promise<void> | null = null;
 
   setConnection(connection: Connection) {
     this.connection = connection;
-    this.loadAllData();
+    this.loadPromise = this.loadAllData();
+  }
+
+  isConnected(): boolean {
+    return this.connection !== null && this.isLoaded;
   }
 
   // Load all storage data from Home Assistant
@@ -87,8 +92,8 @@ export class HAStorage {
   // Retrieve data from cache or localStorage
   async getItem(key: string): Promise<any> {
     // Wait for initial load if needed
-    if (this.connection && !this.isLoaded) {
-      await this.loadAllData();
+    if (this.connection && !this.isLoaded && this.loadPromise) {
+      await this.loadPromise;
     }
 
     // Check cache first

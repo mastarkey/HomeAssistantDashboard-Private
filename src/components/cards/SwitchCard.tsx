@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
 import { Power } from 'lucide-react';
 import DeviceModal from '../DeviceModal';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface SwitchCardProps {
   entityId: string;
@@ -9,9 +10,21 @@ interface SwitchCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
+const SwitchCard: React.FC<SwitchCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms, 
+  isCustom,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService } = useHomeAssistant();
   const [isToggling, setIsToggling] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -37,10 +50,15 @@ const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity, onEntityUpdat
   
   return (
     <>
-      <div 
-        className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative overflow-hidden cursor-pointer"
-        onClick={() => setShowModal(true)}
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
       >
+        <div 
+          className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative overflow-hidden cursor-pointer"
+          onClick={isSelectionMode ? undefined : () => setShowModal(true)}
+        >
         {/* Glow effect when on */}
         {state === 'on' && (
           <div className="absolute inset-0 bg-purple-500/10 blur-2xl" />
@@ -53,8 +71,9 @@ const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity, onEntityUpdat
               <div className={`p-2 rounded-lg ${state === 'on' ? 'bg-purple-500/20' : 'bg-gray-700'}`}>
                 <Power className={`w-5 h-5 ${state === 'on' ? 'text-purple-400' : 'text-gray-400'}`} />
               </div>
-              <div>
-                <h3 className="text-white font-medium">{friendlyName}</h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-white font-medium truncate">{friendlyName}</h3>
+                <p className="text-xs text-gray-500 truncate">{entityId}</p>
                 <p className="text-xs text-gray-400">
                   {state === 'on' ? 'On' : 'Off'}
                 </p>
@@ -63,13 +82,16 @@ const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity, onEntityUpdat
             <button 
               onClick={(e) => {
                 e.stopPropagation();
-                handleToggle(e);
+                if (!isSelectionMode) {
+                  handleToggle(e);
+                }
               }}
+              disabled={isSelectionMode}
               className={`p-2 rounded-lg transition-all ${
                 state === 'on' 
                   ? 'bg-purple-600 hover:bg-purple-700 text-white' 
                   : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-              }`}
+              } ${isSelectionMode ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Power className="w-5 h-5" />
             </button>
@@ -81,6 +103,7 @@ const SwitchCard: React.FC<SwitchCardProps> = ({ entityId, entity, onEntityUpdat
           </div>
         </div>
       </div>
+      </SelectionOverlay>
       
       {/* Device Modal */}
       {showModal && (

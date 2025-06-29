@@ -3,6 +3,7 @@ import { useHomeAssistant } from '../../hooks/useHomeAssistant';
 import { Maximize2, RefreshCw } from 'lucide-react';
 import CameraModal from '../CameraModal';
 import CameraImage from '../CameraImage';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface CameraCardProps {
   entityId: string;
@@ -10,9 +11,21 @@ interface CameraCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const CameraCard: React.FC<CameraCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+const CameraCard: React.FC<CameraCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms = [], 
+  isCustom = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { config } = useHomeAssistant();
   const [showModal, setShowModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -32,10 +45,15 @@ const CameraCard: React.FC<CameraCardProps> = ({ entityId, entity, onEntityUpdat
   
   return (
     <>
-      <div 
-        className="bg-gray-800/50 backdrop-blur rounded-2xl overflow-hidden hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative"
-        onClick={() => setShowModal(true)}
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
       >
+        <div 
+          className="bg-gray-800/50 backdrop-blur rounded-2xl overflow-hidden hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative"
+          onClick={isSelectionMode ? undefined : () => setShowModal(true)}
+        >
         {/* Camera Stream */}
         <div className="relative aspect-video bg-gray-900">
           <CameraImage
@@ -75,6 +93,7 @@ const CameraCard: React.FC<CameraCardProps> = ({ entityId, entity, onEntityUpdat
           </div>
         </div>
       </div>
+      </SelectionOverlay>
       
       {/* Camera Modal */}
       {showModal && (

@@ -8,6 +8,9 @@ interface SensorCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
 const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
@@ -115,8 +118,9 @@ const SensorCard: React.FC<SensorCardProps> = ({ entityId, entity, onEntityUpdat
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-white font-medium truncate">{friendlyName}</h3>
+          <p className="text-xs text-gray-500 truncate">{entityId}</p>
           {deviceClass && (
-            <p className="text-xs text-gray-500 capitalize mt-1">{deviceClass.replace('_', ' ')}</p>
+            <p className="text-xs text-gray-400 capitalize">{deviceClass.replace('_', ' ')}</p>
           )}
         </div>
         <div className="flex items-center gap-2">

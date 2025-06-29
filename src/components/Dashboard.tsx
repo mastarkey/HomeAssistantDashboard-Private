@@ -1,18 +1,28 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useHomeAssistant } from '../hooks/useHomeAssistant';
 import { useOrderStorage } from '../hooks/useOrderStorage';
 import { useCustomEntities } from '../hooks/useCustomEntities';
 import { useEntityOverrides } from '../hooks/useEntityOverrides';
 import { useRoomManager } from '../hooks/useRoomManager';
 import { useCustomCategories } from '../hooks/useCustomCategories';
+import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useToast } from '../contexts/ToastContext';
+import { useNewDeviceDetection } from '../hooks/useNewDeviceDetection';
+import { useThrottledEntities } from '../hooks/useThrottledEntities';
 import EntityCard from './EntityCard';
 import DraggableCard from './DraggableCard';
-import AddDeviceModal from './AddDeviceModal';
-import AddRoomModal from './AddRoomModal';
-import AddCategoryModal from './AddCategoryModal';
+// Lazy load modals to reduce initial bundle size
+const AddDeviceModal = React.lazy(() => import('./AddDeviceModal'));
+const AddRoomModal = React.lazy(() => import('./AddRoomModal'));
+const AddCategoryModal = React.lazy(() => import('./AddCategoryModal'));
+const BulkMoveModal = React.lazy(() => import('./BulkMoveModal').then(module => ({ default: module.BulkMoveModal })));
+const LightGroupAnalyzer = React.lazy(() => import('./LightGroupAnalyzer'));
+import { StorageDebugPanel } from './StorageDebugPanel';
+import NewDeviceNotification from './NewDeviceNotification';
 import { filterEntitiesByCategory } from '../utils/entityHelpers';
 import { filterEntitiesByRoomWithOverrides } from '../utils/entityHelpersWithOverrides';
-import { deduplicateEntities } from '../utils/deduplicateEntities';
+import { groupEntitiesByDevice } from '../utils/deviceGrouping';
+import UnifiedDeviceCard from './cards/UnifiedDeviceCard';
 import { filterPrimaryDevices } from '../utils/deviceFiltering';
 import { isCameraDetectionEntity } from '../utils/cameraDetectionHelpers';
 import { getDeviceForEntity } from '../utils/deviceRegistry';
@@ -48,6 +58,9 @@ import {
   DoorOpen,
   Plus,
   Trash2,
+  Square,
+  MoveRight,
+  X,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 
@@ -86,9 +99,23 @@ const roomIcons: Record<string, React.ReactNode> = {
 
 const Dashboard: React.FC = () => {
   const { entities, config, connected, error, devices } = useHomeAssistant();
+  
+  // Debug logging for iframe issues
+  useEffect(() => {
+    console.log('[Dashboard] Current state:', {
+      connected,
+      hasEntities: !!entities,
+      entityCount: entities ? Object.keys(entities).length : 0,
+      hasDevices: !!devices,
+      deviceCount: devices ? devices.length : 0,
+      error,
+      isInIframe: window.parent !== window,
+      currentUrl: window.location.href
+    });
+  }, [connected, entities, devices, error]);
   const { updateRoomOrder, updateCategoryOrder, updateDeviceOrder, getRoomOrder, getCategoryOrder, getDeviceOrder } = useOrderStorage();
-  const { customEntities, updateCustomEntity, moveCustomEntityToRoom } = useCustomEntities();
-  const { setEntityOverride, getEffectiveRoom, getEntityOverride } = useEntityOverrides();
+  const { customEntities, updateCustomEntity, moveCustomEntityToRoom, deleteCustomEntity } = useCustomEntities();
+  const { setEntityOverride, getEffectiveRoom, getEntityOverride, getEffectiveName } = useEntityOverrides();
   const { customCategories, addCustomCategory, deleteCustomCategory } = useCustomCategories();
   const [view, setView] = useState<'rooms' | 'categories'>('rooms');
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -96,6 +123,20 @@ const Dashboard: React.FC = () => {
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showBulkMove, setShowBulkMove] = useState(false);
+  const [showLightAnalyzer, setShowLightAnalyzer] = useState(false);
+  
+  const {
+    isSelectionMode,
+    selectedDevices,
+    selectedCount,
+    toggleSelectionMode,
+    toggleDeviceSelection,
+    clearSelection,
+    isDeviceSelected,
+  } = useMultiSelect();
+  
+  const { showToast } = useToast();
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -121,34 +162,58 @@ const Dashboard: React.FC = () => {
     return domains;
   }, [customCategories]);
 
+  // Throttle entity updates to reduce re-renders
+  const throttledEntities = useThrottledEntities(entities, 200);
+  
   // Merge Home Assistant entities with custom entities
   const allEntities = useMemo(() => {
-    if (!entities) return customEntities;
-    return { ...entities, ...customEntities };
-  }, [entities, customEntities]);
+    if (!throttledEntities) return customEntities;
+    return { ...throttledEntities, ...customEntities };
+  }, [throttledEntities, customEntities]);
   
   // Use the room manager for unified room handling
   const roomManager = useRoomManager(allEntities, getEffectiveRoom);
   
+  // New device detection
+  const { newDevices, hasNewDevices, dismissNewDevices } = useNewDeviceDetection({
+    entities: allEntities,
+    devices,
+    getEffectiveRoom,
+    onNewDevicesFound: (devices) => {
+      showToast(`${devices.length} new ${devices.length === 1 ? 'device' : 'devices'} discovered!`, 'info');
+    }
+  });
+  
   // Get rooms with proper entity counts
   const rooms = useMemo(() => {
+    console.log('[Dashboard] Computing rooms:', {
+      roomManagerRooms: roomManager.rooms.length,
+      allEntitiesCount: allEntities ? Object.keys(allEntities).length : 0
+    });
+    
     const roomsWithCounts = roomManager.rooms.map(room => {
       const roomEntities = filterEntitiesByRoomWithOverrides(allEntities, room.id, getEffectiveRoom);
-      const deduplicated = deduplicateEntities(roomEntities, devices, allEntities);
-      const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
+      
+      // Group entities by their physical device
+      const entityGroups = groupEntitiesByDevice(roomEntities, devices, allEntities);
+      
+      // Filter to only show primary devices
+      const primaryDeviceGroups = entityGroups.filter(group => {
+        return filterPrimaryDevices([group.primaryEntity], devices, allEntities).length > 0;
+      });
       
       // Debug logging for garage and other rooms
       if (room.id === 'garage' || room.id === 'other') {
-        console.log(`[DEBUG] ${room.name} room entities:`, {
+        console.log(`[DEBUG] ${room.name} room analysis:`, {
           allEntitiesCount: roomEntities.length,
-          deduplicatedCount: deduplicated.length,
-          primaryDevicesCount: primaryDevices.length,
-          entities: primaryDevices.map(([id, e]) => ({ 
-            id, 
-            friendlyName: e.attributes?.friendly_name,
-            domain: id.split('.')[0],
-            effectiveRoom: getEffectiveRoom(id),
-            override: getEntityOverride(id)
+          entityGroupsCount: entityGroups.length,
+          primaryDeviceGroupsCount: primaryDeviceGroups.length,
+          groups: primaryDeviceGroups.map(group => ({
+            deviceId: group.deviceId,
+            deviceName: group.deviceName,
+            primary: group.primaryEntity[0],
+            entitiesCount: group.entities.length,
+            device: group.device?.name || null
           }))
         });
         
@@ -166,8 +231,9 @@ const Dashboard: React.FC = () => {
         })));
       }
       
-      // Filter out hidden and camera detection entities for count
-      const visibleCount = primaryDevices.filter(([entityId, entity]) => {
+      // Filter out hidden and camera detection entities
+      const visibleGroups = primaryDeviceGroups.filter(group => {
+        const [entityId, entity] = group.primaryEntity;
         const override = getEntityOverride(entityId);
         if (override?.hidden) return false;
         
@@ -178,11 +244,11 @@ const Dashboard: React.FC = () => {
         }
         
         return true;
-      }).length;
+      });
       
       return {
         ...room,
-        entityCount: visibleCount
+        entityCount: visibleGroups.length // Count groups, not individual entities
       };
     });
     
@@ -192,8 +258,8 @@ const Dashboard: React.FC = () => {
   }, [roomManager.rooms, allEntities, devices, getRoomOrder, getEffectiveRoom, getEntityOverride]);
 
   // Filter entities based on selection
-  const displayedEntities = useMemo(() => {
-    console.log('[DEBUG] Computing displayedEntities for room:', selectedRoom, 'view:', view);
+  const displayedEntityGroups = useMemo(() => {
+    console.log('[DEBUG] Computing displayedEntityGroups for room:', selectedRoom, 'view:', view);
     if (!allEntities) return [];
     
     // DEBUG: Check if Tesla entities exist in allEntities
@@ -240,30 +306,37 @@ const Dashboard: React.FC = () => {
       filtered = filterEntitiesByCategory(allEntities, selectedCategory, categoryDomains);
     }
     
-    // Deduplicate entities
-    const deduplicated = deduplicateEntities(filtered, devices, allEntities);
+    // Group entities by their physical device
+    const entityGroups = groupEntitiesByDevice(filtered, devices, allEntities);
     
     if (selectedRoom === 'other') {
-      console.log('[DEBUG] Step 2 - After deduplication:', deduplicated.map(([id, entity]) => ({
-        id,
-        name: entity.attributes?.friendly_name || id,
-        domain: id.split('.')[0]
+      console.log('[DEBUG] Step 2 - Device groups:', entityGroups.map(group => ({
+        deviceId: group.deviceId,
+        deviceName: group.deviceName,
+        entitiesCount: group.entities.length,
+        primaryEntity: group.primaryEntity[0]
       })));
     }
     
     // Filter to only show primary devices
-    const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
+    const primaryDeviceGroups = entityGroups.filter(group => {
+      // Check if this is a primary device
+      return filterPrimaryDevices([group.primaryEntity], devices, allEntities).length > 0;
+    });
     
     if (selectedRoom === 'other') {
-      console.log('[DEBUG] Step 3 - After filterPrimaryDevices:', primaryDevices.map(([id, entity]) => ({
-        id,
-        name: entity.attributes?.friendly_name || id,
-        domain: id.split('.')[0]
+      console.log('[DEBUG] Step 3 - After filterPrimaryDevices:', primaryDeviceGroups.map(group => ({
+        deviceId: group.deviceId,
+        deviceName: group.deviceName,
+        primary: group.primaryEntity[0],
+        domain: group.primaryEntity[0].split('.')[0],
+        entitiesCount: group.entities.length
       })));
     }
     
     // Filter out hidden entities and camera detection entities
-    const visibleDevices = primaryDevices.filter(([entityId, entity]) => {
+    const visibleGroups = primaryDeviceGroups.filter(group => {
+      const [entityId, entity] = group.primaryEntity;
       const override = getEntityOverride(entityId);
       if (override?.hidden) return false;
       
@@ -288,56 +361,30 @@ const Dashboard: React.FC = () => {
     
     // Debug final visible devices for Other room
     if (selectedRoom === 'other') {
-      console.log('[DEBUG] Step 4 - Final visible devices in Other room:', visibleDevices.map(([id, entity]) => ({
-        id,
-        name: entity.attributes?.friendly_name || id,
-        domain: id.split('.')[0]
+      console.log('[DEBUG] Final visible groups:', visibleGroups.map(group => ({
+        deviceId: group.deviceId,
+        deviceName: group.deviceName,
+        primary: group.primaryEntity[0],
+        entitiesCount: group.entities.length
       })));
-      
-      // Also log all entities with their overrides
-      console.log('[DEBUG] Entity overrides:', Object.entries(allEntities)
-        .filter(([id]) => id.toLowerCase().includes('tesla'))
-        .map(([id]) => ({
-          id,
-          override: getEntityOverride(id),
-          effectiveRoom: getEffectiveRoom(id)
-        }))
-      );
     }
     
-    // Sort entities
-    const sorted = visibleDevices.sort((a, b) => {
+    // Sort groups by primary entity
+    const sorted = visibleGroups.sort((a, b) => {
       // Sort by domain first (lights, switches, then others)
       const domainOrder = ['light', 'switch', 'climate', 'media_player', 'sensor', 'binary_sensor'];
-      const aDomain = a[0].split('.')[0];
-      const bDomain = b[0].split('.')[0];
+      const aDomain = a.primaryEntity[0].split('.')[0];
+      const bDomain = b.primaryEntity[0].split('.')[0];
       const aOrder = domainOrder.indexOf(aDomain) !== -1 ? domainOrder.indexOf(aDomain) : 999;
       const bOrder = domainOrder.indexOf(bDomain) !== -1 ? domainOrder.indexOf(bDomain) : 999;
       
       if (aOrder !== bOrder) return aOrder - bOrder;
       
-      // Then sort by friendly name
-      const aName = (a[1].attributes?.friendly_name || a[0]).toLowerCase();
-      const bName = (b[1].attributes?.friendly_name || b[0]).toLowerCase();
+      // Then sort by device name
+      const aName = a.deviceName.toLowerCase();
+      const bName = b.deviceName.toLowerCase();
       return aName.localeCompare(bName);
     });
-    
-    // Apply saved order for devices
-    if (selectedRoom) {
-      return getDeviceOrder(selectedRoom, sorted);
-    } else if (selectedCategory) {
-      return getDeviceOrder(selectedCategory, sorted);
-    }
-    
-    // Final debug for Other room
-    if (selectedRoom === 'other') {
-      console.log('[DEBUG] FINAL displayedEntities for Other room:', sorted.length, 'entities');
-      sorted.forEach(([id, entity]) => {
-        if (id.toLowerCase().includes('tesla')) {
-          console.log('[DEBUG] Tesla entity in final display:', id, entity.state);
-        }
-      });
-    }
     
     return sorted;
   }, [allEntities, view, selectedRoom, selectedCategory, devices, getDeviceOrder, categoryDomains]);
@@ -347,27 +394,42 @@ const Dashboard: React.FC = () => {
     if (!allEntities) return {};
     const counts: Record<string, number> = {};
     
-    deviceCategories.forEach(category => {
+    const countCategoryDevices = (category: any) => {
       const categoryEntities = filterEntitiesByCategory(allEntities, category.id, categoryDomains);
-      const deduplicated = deduplicateEntities(categoryEntities, devices, allEntities);
-      const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
+      
+      // Group entities by their physical device
+      const entityGroups = groupEntitiesByDevice(categoryEntities, devices, allEntities);
+      
+      // Filter to only show primary devices
+      const primaryDeviceGroups = entityGroups.filter(group => {
+        return filterPrimaryDevices([group.primaryEntity], devices, allEntities).length > 0;
+      });
       
       // Debug logging for climate category
       if (category.id === 'climate') {
-        console.log('[DEBUG] Climate category entities:', {
+        console.log('[DEBUG] Climate category analysis:', {
+          domains: category.domains,
           allEntitiesCount: categoryEntities.length,
-          deduplicatedCount: deduplicated.length,
-          primaryDevicesCount: primaryDevices.length,
-          entities: primaryDevices.map(([id, e]) => ({ 
-            id, 
-            friendlyName: e.attributes?.friendly_name,
-            room: getEffectiveRoom(id)
+          categoryEntities: categoryEntities.map(([id, e]) => ({
+            id,
+            domain: id.split('.')[0],
+            friendlyName: e.attributes?.friendly_name
+          })),
+          entityGroupsCount: entityGroups.length,
+          primaryDeviceGroupsCount: primaryDeviceGroups.length,
+          groups: primaryDeviceGroups.map(group => ({
+            deviceId: group.deviceId,
+            deviceName: group.deviceName,
+            primary: group.primaryEntity[0],
+            entitiesCount: group.entities.length,
+            device: group.device?.name || null
           }))
         });
       }
       
       // Filter out hidden and camera detection entities
-      const visibleCount = primaryDevices.filter(([entityId, entity]) => {
+      const visibleGroups = primaryDeviceGroups.filter(group => {
+        const [entityId, entity] = group.primaryEntity;
         const override = getEntityOverride(entityId);
         if (override?.hidden) return false;
         
@@ -378,36 +440,24 @@ const Dashboard: React.FC = () => {
         }
         
         return true;
-      }).length;
+      });
       
-      counts[category.id] = visibleCount;
+      // Return the number of visible device groups (not individual entities)
+      return visibleGroups.length;
+    };
+    
+    // Count devices for default categories
+    deviceCategories.forEach(category => {
+      counts[category.id] = countCategoryDevices(category);
     });
     
-    // Add counts for custom categories
+    // Count devices for custom categories
     customCategories.forEach(category => {
-      const categoryEntities = filterEntitiesByCategory(allEntities, category.id, categoryDomains);
-      const deduplicated = deduplicateEntities(categoryEntities, devices, allEntities);
-      const primaryDevices = filterPrimaryDevices(deduplicated, devices, allEntities);
-      
-      // Filter out hidden and camera detection entities
-      const visibleCount = primaryDevices.filter(([entityId, entity]) => {
-        const override = getEntityOverride(entityId);
-        if (override?.hidden) return false;
-        
-        // Use improved detection logic that doesn't rely on friendly names
-        const device = devices ? getDeviceForEntity(entityId, allEntities, devices) : null;
-        if (isCameraDetectionEntity(entityId, entity, device)) {
-          return false;
-        }
-        
-        return true;
-      }).length;
-      
-      counts[category.id] = visibleCount;
+      counts[category.id] = countCategoryDevices(category);
     });
     
     return counts;
-  }, [allEntities, devices, customCategories, categoryDomains, getEffectiveRoom, getEntityOverride]);
+  }, [allEntities, devices, customCategories, categoryDomains, getEntityOverride]);
   
   // Get ordered categories and merge with custom categories
   const orderedCategories = useMemo(() => {
@@ -426,6 +476,21 @@ const Dashboard: React.FC = () => {
     
     return getCategoryOrder(allCategories);
   }, [getCategoryOrder, customCategories]);
+  
+  // Get unassigned devices for quick assign
+  const unassignedDevices = useMemo(() => {
+    if (!allEntities || !devices) return [];
+    
+    const entitiesArray = Object.entries(allEntities) as Array<[string, any]>;
+    const deviceGroups = groupEntitiesByDevice(entitiesArray, devices, allEntities);
+    
+    // Filter to only show primary devices that are unassigned
+    return deviceGroups.filter(device => {
+      const currentRoom = getEffectiveRoom(device.primaryEntity[0]) || device.room;
+      return (!currentRoom || currentRoom === 'other') && 
+             filterPrimaryDevices([device.primaryEntity], devices, allEntities).length > 0;
+    });
+  }, [allEntities, devices, getEffectiveRoom]);
   
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -465,13 +530,14 @@ const Dashboard: React.FC = () => {
         updateCategoryOrder(newOrder);
       }
     } else if (selectedRoom || selectedCategory) {
-      const oldIndex = displayedEntities.findIndex(([id]) => id === active.id);
-      const newIndex = displayedEntities.findIndex(([id]) => id === over.id);
+      const deviceIds = displayedEntityGroups.map(g => g.deviceId);
+      const oldIndex = deviceIds.findIndex(id => id === active.id);
+      const newIndex = deviceIds.findIndex(id => id === over.id);
       
       console.log('[DEBUG] Device drag:', { oldIndex, newIndex, key: selectedRoom || selectedCategory });
       
       if (oldIndex !== -1 && newIndex !== -1) {
-        const newOrder = arrayMove(displayedEntities, oldIndex, newIndex).map(([id]) => id);
+        const newOrder = arrayMove(deviceIds, oldIndex, newIndex);
         const key = selectedRoom || selectedCategory || '';
         console.log('[DEBUG] New device order for', key, ':', newOrder);
         updateDeviceOrder(key, newOrder);
@@ -492,11 +558,55 @@ const Dashboard: React.FC = () => {
         });
       }
     } else {
-      // For Home Assistant entities, just save overrides
-      const overrideUpdates: any = {};
-      if (updates.room) overrideUpdates.room = updates.room;
-      if (updates.name) overrideUpdates.friendlyName = updates.name;
-      setEntityOverride(entityId, overrideUpdates);
+      // For Home Assistant entities, check if this entity is part of a device group
+      const deviceGroup = displayedEntityGroups.find(group => 
+        group.entities.some(([eid]) => eid === entityId)
+      );
+      
+      if (deviceGroup && deviceGroup.entities.length > 1 && updates.room) {
+        // If it's part of a multi-entity device and room is being updated,
+        // update all entities in the device group
+        console.log(`[Dashboard] Updating room for all entities in device group ${deviceGroup.deviceId}`);
+        deviceGroup.entities.forEach(([eid]) => {
+          const overrideUpdates: any = { room: updates.room };
+          if (eid === entityId && updates.name) {
+            overrideUpdates.friendlyName = updates.name;
+          }
+          setEntityOverride(eid, overrideUpdates);
+        });
+      } else {
+        // For single entities or non-room updates, just update the single entity
+        const overrideUpdates: any = {};
+        if (updates.room) overrideUpdates.room = updates.room;
+        if (updates.name) overrideUpdates.friendlyName = updates.name;
+        setEntityOverride(entityId, overrideUpdates);
+      }
+    }
+  };
+
+  const handleDeleteEntity = (entityId: string) => {
+    // Check if it's a custom entity
+    if (entityId.startsWith('custom.')) {
+      deleteCustomEntity(entityId);
+      showToast('Device removed from dashboard');
+    } else {
+      // For Home Assistant entities, check if this entity is part of a device group
+      const deviceGroup = displayedEntityGroups.find(group => 
+        group.entities.some(([eid]) => eid === entityId)
+      );
+      
+      if (deviceGroup && deviceGroup.entities.length > 1) {
+        // If it's part of a multi-entity device, hide all entities in the device group
+        console.log(`[Dashboard] Hiding all entities in device group ${deviceGroup.deviceId}`);
+        deviceGroup.entities.forEach(([eid]) => {
+          setEntityOverride(eid, { hidden: true });
+        });
+        showToast(`Removed ${deviceGroup.deviceName} (${deviceGroup.entities.length} entities) from dashboard`);
+      } else {
+        // For single entities, just hide this entity
+        setEntityOverride(entityId, { hidden: true });
+        showToast('Device removed from dashboard');
+      }
     }
   };
 
@@ -513,12 +623,64 @@ const Dashboard: React.FC = () => {
               <p className="text-gray-400 mt-1">Welcome back, {config?.location_name || 'User'}</p>
             </div>
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setShowAddDevice(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-              >
-                <span className="text-xl">+</span> Add Device
-              </button>
+              {!isSelectionMode && (
+                <>
+                  <button 
+                    onClick={() => {
+                      console.log('[Dashboard] Add Device clicked');
+                      setShowAddDevice(true);
+                    }}
+                    className="relative bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" /> Add Device
+                    {unassignedDevices.length > 0 && (
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full 
+                                     w-6 h-6 flex items-center justify-center font-bold animate-pulse">
+                        {unassignedDevices.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={toggleSelectionMode}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Square className="w-5 h-5" /> Select
+                  </button>
+                  <button
+                    onClick={() => setShowLightAnalyzer(true)}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                    title="Analyze light groups"
+                  >
+                    <Lightbulb className="w-5 h-5" /> Light Groups
+                  </button>
+                </>
+              )}
+              
+              {isSelectionMode && (
+                <>
+                  <span className="text-gray-400">
+                    {selectedCount} selected
+                  </span>
+                  {selectedCount > 0 && (
+                    <button
+                      onClick={() => setShowBulkMove(true)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <MoveRight className="w-5 h-5" /> Move {selectedCount} Device{selectedCount > 1 ? 's' : ''}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      clearSelection();
+                      toggleSelectionMode();
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <X className="w-5 h-5" /> Cancel
+                  </button>
+                </>
+              )}
+              
               <div className="flex items-center gap-2 bg-green-500/20 text-green-400 px-4 py-2 rounded-lg">
                 <div className="w-2 h-2 rounded-full bg-green-400"></div>
                 <span className="text-sm font-medium">Connected</span>
@@ -725,12 +887,12 @@ const Dashboard: React.FC = () => {
                     {selectedRoom && rooms.find(r => r.id === selectedRoom)?.name}
                     {selectedCategory && orderedCategories.find(c => c.id === selectedCategory)?.name}
                     <span className="text-base font-normal text-gray-400 ml-2">
-                      ({displayedEntities.length} devices)
+                      ({displayedEntityGroups.length} devices)
                     </span>
                   </h2>
                   
                   {/* Delete Room Button - Show for any room with no devices */}
-                  {selectedRoom && displayedEntities.length === 0 && (
+                  {selectedRoom && displayedEntityGroups.length === 0 && (
                     <button
                       onClick={() => {
                         const room = rooms.find(r => r.id === selectedRoom);
@@ -747,7 +909,7 @@ const Dashboard: React.FC = () => {
                   )}
                   
                   {/* Delete Category Button - Only show for custom categories with no devices */}
-                  {selectedCategory && displayedEntities.length === 0 && (
+                  {selectedCategory && displayedEntityGroups.length === 0 && (
                     <>
                       {orderedCategories.find(c => c.id === selectedCategory)?.isCustom && (
                         <button
@@ -769,29 +931,54 @@ const Dashboard: React.FC = () => {
                 </div>
 
                 {/* Entity Grid */}
-                {displayedEntities.length > 0 ? (
+                {displayedEntityGroups.length > 0 ? (
                   <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
                   >
                     <SortableContext
-                      items={displayedEntities.map(([id]) => id)}
+                      items={displayedEntityGroups.map(g => g.deviceId)}
                       strategy={rectSortingStrategy}
                     >
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-                        {displayedEntities.map(([entityId, entity]) => {
-                          if (entityId.toLowerCase().includes('tesla')) {
-                            console.log('[DEBUG] Rendering Tesla entity card:', entityId);
+                        {displayedEntityGroups.map(group => {
+                          const [primaryId, primaryEntity] = group.primaryEntity;
+                          
+                          // Use UnifiedDeviceCard if we have multiple entities for this device
+                          if (group.entities.length > 1 || group.device) {
+                            return (
+                              <DraggableCard key={group.deviceId} id={group.deviceId} isSelectionMode={isSelectionMode}>
+                                <UnifiedDeviceCard
+                                  deviceId={group.deviceId}
+                                  device={group.device || undefined}
+                                  entities={group.entities}
+                                  primaryEntity={group.primaryEntity}
+                                  onEntityUpdate={handleEntityUpdate}
+                                  onDelete={handleDeleteEntity}
+                                  rooms={rooms}
+                                  isCustom={primaryId.startsWith('custom.')}
+                                  isSelectionMode={isSelectionMode}
+                                  isSelected={isDeviceSelected(group.deviceId)}
+                                  onSelectionToggle={() => toggleDeviceSelection(group.deviceId)}
+                                />
+                              </DraggableCard>
+                            );
                           }
+                          
+                          // Use regular EntityCard for single entities
                           return (
-                            <DraggableCard key={entityId} id={entityId}>
+                            <DraggableCard key={group.deviceId} id={group.deviceId} isSelectionMode={isSelectionMode}>
                               <EntityCard 
-                                entityId={entityId} 
-                                entity={entity}
+                                entityId={primaryId} 
+                                entity={primaryEntity}
                                 onEntityUpdate={handleEntityUpdate}
+                                onDelete={handleDeleteEntity}
                                 rooms={rooms}
-                                isCustom={entityId.startsWith('custom.')}
+                                isCustom={primaryId.startsWith('custom.')}
+                                isSelectionMode={isSelectionMode}
+                                isSelected={isDeviceSelected(group.deviceId)}
+                                onSelectionToggle={() => toggleDeviceSelection(group.deviceId)}
                               />
                             </DraggableCard>
                           );
@@ -858,36 +1045,104 @@ const Dashboard: React.FC = () => {
       
       {/* Add Device Modal */}
       {showAddDevice && (
-        <AddDeviceModal
-          onClose={() => setShowAddDevice(false)}
-          onAssign={(entityId, roomId) => {
-            setEntityOverride(entityId, { room: roomId });
-          }}
-          entities={allEntities}
-          devices={devices}
-          rooms={rooms}
-          getEffectiveRoom={getEffectiveRoom}
-        />
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"><div className="text-white">Loading...</div></div>}>
+          <AddDeviceModal
+            onClose={() => setShowAddDevice(false)}
+            onAssign={(entityId, roomId) => {
+              setEntityOverride(entityId, { room: roomId });
+            }}
+            entities={allEntities}
+            devices={devices}
+            rooms={rooms}
+            getEffectiveRoom={getEffectiveRoom}
+          />
+        </React.Suspense>
       )}
       
       
       {/* Add Room Modal */}
       {showAddRoom && (
-        <AddRoomModal
-          onClose={() => setShowAddRoom(false)}
-          onAdd={roomManager.addRoom}
-          existingRooms={rooms}
-        />
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"><div className="text-white">Loading...</div></div>}>
+          <AddRoomModal
+            onClose={() => setShowAddRoom(false)}
+            onAdd={roomManager.addRoom}
+            existingRooms={rooms}
+          />
+        </React.Suspense>
       )}
       
       {/* Add Category Modal */}
       {showAddCategory && (
-        <AddCategoryModal
-          onClose={() => setShowAddCategory(false)}
-          onAdd={addCustomCategory}
-          existingCategories={orderedCategories}
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"><div className="text-white">Loading...</div></div>}>
+          <AddCategoryModal
+            onClose={() => setShowAddCategory(false)}
+            onAdd={addCustomCategory}
+            existingCategories={orderedCategories}
+          />
+        </React.Suspense>
+      )}
+      
+      {/* Bulk Move Modal */}
+      {showBulkMove && (
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"><div className="text-white">Loading...</div></div>}>
+          <BulkMoveModal
+          selectedDevices={selectedDevices}
+          rooms={rooms}
+          onClose={() => {
+            setShowBulkMove(false);
+            clearSelection();
+            toggleSelectionMode();
+          }}
+          onMove={(deviceIds, targetRoom) => {
+            // For each selected device, find its device group and move all entities
+            let totalEntitiesMoved = 0;
+            deviceIds.forEach(deviceId => {
+              const deviceGroup = displayedEntityGroups.find(group => group.deviceId === deviceId);
+              if (deviceGroup) {
+                // Move all entities in the device group
+                deviceGroup.entities.forEach(([eid]) => {
+                  setEntityOverride(eid, { room: targetRoom });
+                  totalEntitiesMoved++;
+                });
+              } else {
+                // Fallback for single entities
+                setEntityOverride(deviceId, { room: targetRoom });
+                totalEntitiesMoved++;
+              }
+            });
+            showToast(`Moved ${deviceIds.length} device${deviceIds.length > 1 ? 's' : ''} (${totalEntitiesMoved} entities) to ${rooms.find(r => r.id === targetRoom)?.name || targetRoom}`);
+            setShowBulkMove(false);
+            clearSelection();
+            toggleSelectionMode();
+          }}
+          entities={allEntities}
+          getEffectiveName={getEffectiveName}
+        />
+        </React.Suspense>
+      )}
+
+      {/* New Device Notification */}
+      {hasNewDevices && (
+        <NewDeviceNotification
+          newDevices={newDevices}
+          onAddDevice={() => {
+            setShowAddDevice(true);
+            dismissNewDevices();
+          }}
+          onDismiss={dismissNewDevices}
         />
       )}
+      
+
+      {/* Light Group Analyzer Modal */}
+      {showLightAnalyzer && (
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"><div className="text-white">Loading...</div></div>}>
+          <LightGroupAnalyzer onClose={() => setShowLightAnalyzer(false)} />
+        </React.Suspense>
+      )}
+
+      {/* Storage Debug Panel - Only in development */}
+      {import.meta.env.DEV && <StorageDebugPanel />}
     </div>
   );
 };

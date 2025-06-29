@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "tsc -b && vite build --mode production",
     "build:ha": "tsc -b && vite build --config vite.config.ha.ts",
     "lint": "eslint .",
     "preview": "vite preview",
+    "deploy": "npm run build:prod && npm run copy:prod",
+    "copy:prod": "cp -r dist/* ../www/react-dashboard/",
     "deploy:ha": "npm run build:ha && npm run copy:ha",
     "copy:ha": "echo 'Copy dist-ha contents to your HA config/www/react-dashboard/ folder'"
   },
@@ -23,7 +26,8 @@
     "lucide-react": "^0.515.0",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.3.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "toast": "^0.5.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",

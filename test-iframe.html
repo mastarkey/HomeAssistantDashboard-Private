@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Assistant Dashboard Iframe Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        iframe {
+            width: 100%;
+            height: 800px;
+            border: 2px solid #333;
+            border-radius: 8px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+        }
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            background: #4a4a4a;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #5a5a5a;
+        }
+        .log {
+            margin-top: 20px;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Home Assistant Dashboard Iframe Test</h1>
+        
+        <div class="controls">
+            <h3>Test Controls</h3>
+            <button onclick="sendMessage('test')">Send Test Message</button>
+            <button onclick="sendHassData()">Send Mock HASS Data</button>
+            <button onclick="clearLog()">Clear Log</button>
+            
+            <div class="log" id="log">
+                <div>Waiting for iframe to load...</div>
+            </div>
+        </div>
+        
+        <iframe 
+            id="dashboard-iframe" 
+            src="http://localhost:5173"
+            title="Home Assistant Dashboard">
+        </iframe>
+    </div>
+
+    <script>
+        const iframe = document.getElementById('dashboard-iframe');
+        const log = document.getElementById('log');
+        
+        function addLog(message) {
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function clearLog() {
+            log.innerHTML = '';
+            addLog('Log cleared');
+        }
+        
+        window.addEventListener('message', (event) => {
+            addLog(`Received message from iframe: ${JSON.stringify(event.data)}`);
+        });
+        
+        function sendMessage(type) {
+            addLog(`Sending message: ${type}`);
+            iframe.contentWindow.postMessage({ type, timestamp: Date.now() }, '*');
+        }
+        
+        function sendHassData() {
+            addLog('Sending mock HASS data');
+            
+            // This simulates what Home Assistant would send
+            const mockHassData = {
+                type: 'hass-update',
+                hass: {
+                    states: {
+                        'light.living_room': {
+                            entity_id: 'light.living_room',
+                            state: 'on',
+                            attributes: {
+                                friendly_name: 'Living Room Light',
+                                brightness: 255
+                            }
+                        },
+                        'switch.bedroom_fan': {
+                            entity_id: 'switch.bedroom_fan',
+                            state: 'off',
+                            attributes: {
+                                friendly_name: 'Bedroom Fan'
+                            }
+                        },
+                        'sensor.temperature': {
+                            entity_id: 'sensor.temperature',
+                            state: '22',
+                            attributes: {
+                                friendly_name: 'Temperature',
+                                unit_of_measurement: '°C'
+                            }
+                        }
+                    },
+                    config: {
+                        location_name: 'Test Home',
+                        latitude: 0,
+                        longitude: 0,
+                        elevation: 0,
+                        unit_system: {
+                            length: 'km',
+                            mass: 'kg',
+                            temperature: '°C',
+                            volume: 'L'
+                        },
+                        time_zone: 'UTC'
+                    }
+                }
+            };
+            
+            iframe.contentWindow.postMessage(mockHassData, '*');
+        }
+        
+        iframe.onload = () => {
+            addLog('Iframe loaded');
+        };
+    </script>
+</body>
+</html>

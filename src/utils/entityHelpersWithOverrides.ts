@@ -68,15 +68,21 @@ export function filterEntitiesByRoomWithOverrides(
 ): [string, any][] {
   console.log(`[DEBUG] filterEntitiesByRoomWithOverrides called for room: ${roomId}`);
   
-  // First, log all Tesla entities to see if they exist
-  const allTeslaEntities = Object.entries(entities).filter(([id]) => 
-    id.toLowerCase().includes('tesla_wall_connector')
-  );
-  if (allTeslaEntities.length > 0) {
-    console.log(`[DEBUG] Found ${allTeslaEntities.length} Tesla entities in total:`, 
-      allTeslaEntities.map(([id, e]) => ({
+  // Debug: Show what entities have overrides for this room
+  if (roomId === 'other' || roomId === 'garage') {
+    const entitiesWithThisRoom = Object.entries(entities).filter(([id, entity]) => {
+      const defaultRoom = getRoomFromEntity(entity);
+      const effectiveRoom = getEffectiveRoom ? getEffectiveRoom(id, defaultRoom) : defaultRoom;
+      const normalizedRoom = effectiveRoom.toLowerCase().replace(/[\s_]+/g, '_');
+      return normalizedRoom === roomId;
+    });
+    
+    console.log(`[DEBUG] Entities assigned to room '${roomId}':`, 
+      entitiesWithThisRoom.map(([id, e]) => ({
         id,
-        state: (e as any).state,
+        friendlyName: (e as any).attributes?.friendly_name,
+        domain: id.split('.')[0],
+        defaultRoom: getRoomFromEntity(e),
         effectiveRoom: getEffectiveRoom ? getEffectiveRoom(id, getRoomFromEntity(e)) : getRoomFromEntity(e)
       }))
     );

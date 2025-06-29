@@ -14,6 +14,7 @@ import {
   Navigation
 } from 'lucide-react';
 import VacuumModal from '../VacuumModal';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface VacuumCardProps {
   entityId: string;
@@ -21,9 +22,21 @@ interface VacuumCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const VacuumCard: React.FC<VacuumCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+const VacuumCard: React.FC<VacuumCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms = [], 
+  isCustom = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -89,10 +102,15 @@ const VacuumCard: React.FC<VacuumCardProps> = ({ entityId, entity, onEntityUpdat
   
   return (
     <>
-      <div 
-        className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative overflow-hidden"
-        onClick={() => setShowModal(true)}
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
       >
+        <div 
+          className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative overflow-hidden"
+          onClick={isSelectionMode ? undefined : () => setShowModal(true)}
+        >
         {/* Background gradient for active state */}
         {isCleaning && (
           <div className="absolute inset-0 bg-gradient-to-br from-green-600/10 to-blue-600/10" />
@@ -243,6 +261,7 @@ const VacuumCard: React.FC<VacuumCardProps> = ({ entityId, entity, onEntityUpdat
           </div>
         </div>
       </div>
+      </SelectionOverlay>
       
       {/* Vacuum Modal */}
       {showModal && (

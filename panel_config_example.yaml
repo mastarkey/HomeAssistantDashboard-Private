@@ -1,0 +1,22 @@
+# Example Home Assistant configuration for the React Dashboard
+# Add this to your configuration.yaml or create a separate panel configuration
+
+panel_iframe:
+  react_dashboard:
+    title: "React Dashboard"
+    icon: mdi:view-dashboard
+    url: "http://localhost:5173"  # Change to your dashboard URL
+    require_admin: false
+    
+# Alternative: Using panel_custom (requires building and hosting the dashboard)
+# panel_custom:
+#   - name: react-dashboard
+#     sidebar_title: React Dashboard
+#     sidebar_icon: mdi:view-dashboard
+#     js_url: /local/react-dashboard/dist/index.js
+#     url_path: react-dashboard
+#     embed_iframe: true
+#     require_admin: false
+#     config:
+#       # Any custom config you want to pass to the dashboard
+#       theme: dark

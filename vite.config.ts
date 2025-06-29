@@ -25,7 +25,25 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
-    chunkSizeWarningLimit: 600,
+    sourcemap: false, // Disable sourcemaps for production
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'dnd-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2'],
+          'icon-vendor': ['lucide-react'],
+          'ha-vendor': ['home-assistant-js-websocket']
+        },
+        // Optimize chunk loading
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]'
+      }
+    },
+    // Optimize for production
+    minify: 'esbuild',
+    target: 'es2015'
   }
 })

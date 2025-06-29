@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, MapPin, Home, Tag, Settings } from 'lucide-react';
+import { X, MapPin, Home, Tag, Settings, Trash2 } from 'lucide-react';
 
 interface EditDeviceModalProps {
   entityId: string;
   entity: any;
   onClose: () => void;
   onSave: (entityId: string, updates: { room?: string; name?: string; attributes?: any }) => void;
+  onDelete?: (entityId: string) => void;
   rooms: Array<{ id: string; name: string }>;
   isCustom?: boolean;
 }
@@ -15,6 +16,7 @@ const EditDeviceModal: React.FC<EditDeviceModalProps> = ({
   entity, 
   onClose, 
   onSave, 
+  onDelete,
   rooms,
   isCustom = false 
 }) => {
@@ -24,6 +26,7 @@ const EditDeviceModal: React.FC<EditDeviceModalProps> = ({
   const [selectedRoom, setSelectedRoom] = useState(currentRoom);
   const [deviceName, setDeviceName] = useState(currentName);
   const [hasChanges, setHasChanges] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const handleRoomChange = (roomId: string) => {
     setSelectedRoom(roomId);
@@ -153,6 +156,19 @@ const EditDeviceModal: React.FC<EditDeviceModalProps> = ({
             </div>
           )}
           
+          {/* Delete Section */}
+          {onDelete && (
+            <div className="border-t border-gray-800 pt-6">
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Remove Device from Dashboard
+              </button>
+            </div>
+          )}
+          
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4">
             <button
@@ -173,6 +189,35 @@ const EditDeviceModal: React.FC<EditDeviceModalProps> = ({
           </div>
         </div>
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-2xl max-w-md w-full p-6">
+            <h3 className="text-xl font-semibold text-white mb-4">Remove Device?</h3>
+            <p className="text-gray-400 mb-6">
+              This will remove "{deviceName}" from the dashboard. The device will still exist in Home Assistant and can be added back later.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onDelete?.(entityId);
+                  onClose();
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Remove Device
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

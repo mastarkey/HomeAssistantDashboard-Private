@@ -65,15 +65,51 @@ export const useHomeAssistant = () => {
         let connection: Connection;
         let auth: Auth | null = null;
         
-        // Check if we're running as a native HA panel or in an iframe
-        const panelProps = window.__REACT_DASHBOARD_PROPS__;
+        // Check if we're running inside Home Assistant
         const isInIframe = window.parent !== window;
+        const isHomeAssistant = isInIframe && window.location.pathname.includes('react-dashboard-iframe');
         
-        if (panelProps?.hass || isInIframe) {
-          console.log('[Native/Iframe Mode] Using provided Home Assistant data');
+        // Wait for panel props if we're in Home Assistant
+        if (isHomeAssistant) {
+          console.log('[HA Integration] Waiting for Home Assistant data...');
           
-          // If we have panel props, use them
-          if (panelProps?.hass) {
+          // Listen for HASS updates
+          const handleHassUpdate = (event: CustomEvent) => {
+            console.log('[HA Integration] Received HASS update');
+            const hass = event.detail;
+            
+            setState((prev) => ({
+              ...prev,
+              entities: hass.states,
+              config: hass.config,
+              connection: hass.connection,
+              connected: true,
+              error: null,
+              auth: null,
+            }));
+            
+            // Set connection for haStorage
+            if (hass.connection) {
+              haStorage.setConnection(hass.connection);
+            }
+          };
+          
+          window.addEventListener('hass-update', handleHassUpdate as any);
+          
+          // Request HASS data from parent
+          window.parent.postMessage({ type: 'ready-for-hass' }, '*');
+          
+          return () => {
+            window.removeEventListener('hass-update', handleHassUpdate as any);
+          };
+        }
+        
+        const panelProps = window.__REACT_DASHBOARD_PROPS__;
+        
+        if (panelProps?.hass) {
+          console.log('[Native HA Panel] Using provided Home Assistant data');
+          
+          // We have panel props, use them
             setState((prev) => ({
               ...prev,
               entities: panelProps.hass!.states,
@@ -85,7 +121,7 @@ export const useHomeAssistant = () => {
             }));
             
             // Set connection for haStorage
-            haStorage.setConnection(panelProps.hass!.connection || {
+            const hassConnection = panelProps.hass!.connection || {
               sendMessagePromise: async (message: any) => {
                 console.log('[Native HA Panel] Mock sendMessagePromise:', message);
                 if (message.type === 'frontend/get_user_data') {
@@ -93,29 +129,46 @@ export const useHomeAssistant = () => {
                 }
                 return {};
               }
-            } as any);
+            } as any;
             
-            // Don't try to subscribe if we don't have a real connection
-            // The hass-update event will handle updates instead
-            return;
-          }
-          
-          // If we're in an iframe but no props yet, wait for them
-          console.log('[Iframe Mode] Waiting for HASS data from parent...');
-          return;
+            haStorage.setConnection(hassConnection);
+            
+            // Set the connection for fetching registries
+            connection = hassConnection;
+            
+            // Don't subscribe to entities (hass-update will handle that)
+            // But continue to fetch device and area registries below
         } else {
-          // Standalone mode - create our own connection
-          console.log('[Standalone Mode] Creating WebSocket connection');
+          // No panel props - create our own connection
+          console.log(isInIframe ? '[Iframe Mode] Creating WebSocket connection' : '[Standalone Mode] Creating WebSocket connection');
           
           let hassUrl = 'http://192.168.1.7:8123';
           
           try {
             // Try to detect if we're in an iframe
-            if (window.parent !== window && window.parent.location.origin) {
-              hassUrl = window.parent.location.origin;
+            if (isInIframe) {
+              // First try to get the URL from the iframe src
+              const currentUrl = new URL(window.location.href);
+              const baseUrl = currentUrl.origin;
+              if (baseUrl && baseUrl !== 'null') {
+                hassUrl = baseUrl;
+                console.log('[Iframe Mode] Using iframe origin URL:', hassUrl);
+              } else {
+                // Try parent window origin
+                try {
+                  if (window.parent.location.origin) {
+                    hassUrl = window.parent.location.origin;
+                    console.log('[Iframe Mode] Using parent origin URL:', hassUrl);
+                  }
+                } catch (e) {
+                  // Cross-origin error, use default URL
+                  console.log('[Iframe Mode] Cross-origin error, using default URL:', hassUrl);
+                }
+              }
             }
           } catch (e) {
-            // Cross-origin error, use default URL
+            // Error getting URL, use default
+            console.error('[Iframe Mode] Error detecting URL:', e);
           }
           
           // We have a long-lived token, so use it directly
@@ -221,7 +274,7 @@ export const useHomeAssistant = () => {
     return callService(state.connection, domain, service, serviceData);
   };
 
-  // Listen for HA panel updates in native mode
+  // Listen for HA panel updates in native mode and iframe messages
   useEffect(() => {
     const handleHassUpdate = (event: CustomEvent) => {
       const hass = event.detail;
@@ -234,9 +287,28 @@ export const useHomeAssistant = () => {
       }
     };
 
+    // Handle postMessage from parent window (iframe mode)
+    const handleMessage = (event: MessageEvent) => {
+      console.log('[useHomeAssistant] Received message:', event.data);
+      
+      if (event.data?.type === 'hass-update' && event.data?.hass) {
+        console.log('[useHomeAssistant] Processing HASS data from parent window');
+        setState((prev) => ({
+          ...prev,
+          entities: event.data.hass.states,
+          config: event.data.hass.config,
+          connected: true,
+          error: null,
+        }));
+      }
+    };
+
     window.addEventListener('hass-update', handleHassUpdate as any);
+    window.addEventListener('message', handleMessage);
+    
     return () => {
       window.removeEventListener('hass-update', handleHassUpdate as any);
+      window.removeEventListener('message', handleMessage);
     };
   }, []);
 

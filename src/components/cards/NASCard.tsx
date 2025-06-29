@@ -18,6 +18,9 @@ interface NASCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
 const NASCard: React.FC<NASCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {

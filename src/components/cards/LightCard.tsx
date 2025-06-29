@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useHomeAssistant } from '../../hooks/useHomeAssistant';
-import { Lightbulb, Power, Palette } from 'lucide-react';
+import { Lightbulb, Power, Palette, Users } from 'lucide-react';
 import LightModal from '../LightModal';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface LightCardProps {
   entityId: string;
@@ -9,9 +10,21 @@ interface LightCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate, rooms, isCustom }) => {
+const LightCard: React.FC<LightCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms, 
+  isCustom,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService } = useHomeAssistant();
   const [isToggling, setIsToggling] = useState(false);
   const [isAdjusting, setIsAdjusting] = useState(false);
@@ -32,6 +45,9 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
   const effectList = attributes.effect_list || [];
   const currentEffect = attributes.effect;
   
+  // Check if this is a light group
+  const isLightGroup = attributes.entity_id && Array.isArray(attributes.entity_id) && attributes.entity_id.length > 1;
+  
   // Check supported features
   const supportsColorTemp = (supportedFeatures & 2) !== 0 || supportedColorModes.includes('color_temp');
   const supportsColor = (supportedFeatures & 16) !== 0 || 
@@ -42,7 +58,7 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
   
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isToggling) return;
+    if (isToggling || isSelectionMode) return;
     
     setIsToggling(true);
     try {
@@ -140,11 +156,16 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
   
   return (
     <>
-      <div 
-        className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative overflow-hidden cursor-pointer"
-        style={{ background: getBackgroundGradient() }}
-        onClick={() => setShowModal(true)}
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
       >
+        <div 
+          className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group relative overflow-hidden cursor-pointer"
+          style={{ background: getBackgroundGradient() }}
+          onClick={isSelectionMode ? undefined : () => setShowModal(true)}
+        >
       {/* Glow effect when on */}
       {state === 'on' && (
         <div className="absolute inset-0 bg-yellow-500/10 blur-2xl" />
@@ -154,22 +175,39 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${state === 'on' ? 'bg-yellow-500/20' : 'bg-gray-700'}`}>
-              <Lightbulb className={`w-5 h-5 ${state === 'on' ? 'text-yellow-400' : 'text-gray-400'}`} />
+            <div className={`p-2 rounded-lg ${state === 'on' ? 'bg-yellow-500/20' : 'bg-gray-700'} relative`}>
+              {isLightGroup ? (
+                <Users className={`w-5 h-5 ${state === 'on' ? 'text-yellow-400' : 'text-gray-400'}`} />
+              ) : (
+                <Lightbulb className={`w-5 h-5 ${state === 'on' ? 'text-yellow-400' : 'text-gray-400'}`} />
+              )}
+              {isLightGroup && (
+                <div className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                  {attributes.entity_id.length}
+                </div>
+              )}
             </div>
             <div>
               <h3 className="text-white font-medium">{friendlyName}</h3>
-              {brightnessPercent > 0 && (
-                <p className="text-xs text-gray-400">{brightnessPercent}% brightness</p>
-              )}
+              <div className="flex items-center gap-2">
+                {brightnessPercent > 0 && (
+                  <p className="text-xs text-gray-400">{brightnessPercent}% brightness</p>
+                )}
+                {isLightGroup && (
+                  <p className="text-xs text-purple-400">Group</p>
+                )}
+              </div>
             </div>
           </div>
           <button 
-            onClick={handleToggle}
+            onClick={isSelectionMode ? (e) => e.stopPropagation() : handleToggle}
+            disabled={isSelectionMode}
             className={`p-2 rounded-lg transition-all ${
               state === 'on' 
                 ? 'bg-purple-600 hover:bg-purple-700 text-white' 
                 : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+            } ${
+              isSelectionMode ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
             <Power className="w-5 h-5" />
@@ -186,6 +224,7 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
               value={state === 'on' ? brightnessPercent : 0}
               onChange={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode) return;
                 const value = parseInt(e.target.value);
                 if (value === 0) {
                   callService('light', 'turn_off', {
@@ -199,6 +238,7 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
                 }
               }}
               onClick={(e) => e.stopPropagation()}
+              disabled={isSelectionMode}
               className="w-full h-3 bg-gray-700 rounded-full appearance-none cursor-pointer
                        [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 
                        [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:bg-purple-500 
@@ -219,15 +259,25 @@ const LightCard: React.FC<LightCardProps> = ({ entityId, entity, onEntityUpdate,
         
         {/* Light Type */}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 uppercase tracking-wider">LIGHT</span>
-          {supportsEffects && effectList.length > 0 && (
-            <span className="text-xs text-purple-400">
-              {effectList.length} effects
-            </span>
-          )}
+          <span className="text-xs text-gray-500 uppercase tracking-wider">
+            {isLightGroup ? 'LIGHT GROUP' : 'LIGHT'}
+          </span>
+          <div className="flex items-center gap-2">
+            {isLightGroup && (
+              <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">
+                {attributes.entity_id.length} lights
+              </span>
+            )}
+            {supportsEffects && effectList.length > 0 && (
+              <span className="text-xs text-purple-400">
+                {effectList.length} effects
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
+      </SelectionOverlay>
     
     {/* Light Modal */}
     {showModal && (

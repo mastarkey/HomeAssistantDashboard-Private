@@ -1,7 +1,8 @@
 // Hook for managing card order persistence in HA storage
 
-import { useState, useEffect } from 'react';
-import { haStorage, STORAGE_KEYS } from '../services/haStorage';
+import { useState, useEffect, useRef } from 'react';
+import { STORAGE_KEYS } from '../services/haStorage';
+import { storageManager } from '../services/storageManager';
 
 interface OrderStorage {
   rooms: string[];
@@ -9,24 +10,77 @@ interface OrderStorage {
   devices: Record<string, string[]>; // roomId/categoryId -> entityIds
 }
 
-export function useOrderStorage() {
-  const [order, setOrder] = useState<OrderStorage>({
-    rooms: [],
-    categories: [],
-    devices: {}
-  });
-  const [isLoading, setIsLoading] = useState(true);
+const STORAGE_VERSION = 2;
+const DEFAULT_ORDER: OrderStorage = {
+  rooms: [],
+  categories: [],
+  devices: {}
+};
 
-  // Load from HA storage on mount
+// Migration function for version upgrades
+function migrateOrder(oldData: any, oldVersion: number): OrderStorage {
+  // Version 0->1: Legacy format
+  if (oldVersion === 0) {
+    return {
+      rooms: oldData?.rooms || [],
+      categories: oldData?.categories || [],
+      devices: oldData?.devices || {}
+    };
+  }
+  
+  // Version 1->2: Add validation
+  if (oldVersion === 1) {
+    const validated: OrderStorage = {
+      rooms: Array.isArray(oldData?.rooms) ? oldData.rooms : [],
+      categories: Array.isArray(oldData?.categories) ? oldData.categories : [],
+      devices: {}
+    };
+    
+    // Validate devices object
+    if (oldData?.devices && typeof oldData.devices === 'object') {
+      Object.entries(oldData.devices).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          validated.devices[key] = value;
+        }
+      });
+    }
+    
+    return validated;
+  }
+
+  return oldData;
+}
+
+export function useOrderStorage() {
+  const [order, setOrder] = useState<OrderStorage>(DEFAULT_ORDER);
+  const [isLoading, setIsLoading] = useState(true);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSaveRef = useRef<string>('');
+
+  // Load from storage on mount
   useEffect(() => {
     const loadOrder = async () => {
       try {
-        const stored = await haStorage.getItem(STORAGE_KEYS.CARD_ORDER);
+        console.log('[useOrderStorage] Loading card order...');
+        const stored = await storageManager.getItem(
+          STORAGE_KEYS.CARD_ORDER,
+          DEFAULT_ORDER,
+          {
+            version: STORAGE_VERSION,
+            migrate: migrateOrder
+          }
+        );
+        
         if (stored) {
+          console.log('[useOrderStorage] Loaded order:', {
+            rooms: stored.rooms.length,
+            categories: stored.categories.length,
+            devices: Object.keys(stored.devices).length
+          });
           setOrder(stored);
         }
       } catch (e) {
-        // Failed to load order
+        console.error('[useOrderStorage] Failed to load:', e);
       } finally {
         setIsLoading(false);
       }
@@ -34,22 +88,55 @@ export function useOrderStorage() {
     loadOrder();
   }, []);
 
+  // Save to storage with debouncing
   useEffect(() => {
-    if (!isLoading) {
-      haStorage.setItem(STORAGE_KEYS.CARD_ORDER, order);
+    if (isLoading) return;
+
+    // Create a stable string representation for comparison
+    const currentData = JSON.stringify(order);
+    if (currentData === lastSaveRef.current) {
+      return; // No changes to save
     }
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce saves by 500ms
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        console.log('[useOrderStorage] Saving order');
+        await storageManager.setItem(
+          STORAGE_KEYS.CARD_ORDER,
+          order,
+          STORAGE_VERSION
+        );
+        lastSaveRef.current = currentData;
+      } catch (e) {
+        console.error('[useOrderStorage] Failed to save:', e);
+      }
+    }, 500);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [order, isLoading]);
 
   const updateRoomOrder = (newOrder: string[]) => {
+    console.log('[useOrderStorage] Updating room order:', newOrder);
     setOrder(prev => ({ ...prev, rooms: newOrder }));
   };
 
   const updateCategoryOrder = (newOrder: string[]) => {
+    console.log('[useOrderStorage] Updating category order:', newOrder);
     setOrder(prev => ({ ...prev, categories: newOrder }));
   };
 
   const updateDeviceOrder = (roomOrCategoryId: string, newOrder: string[]) => {
-    console.log('[DEBUG] updateDeviceOrder:', { roomOrCategoryId, newOrder });
+    console.log('[useOrderStorage] Updating device order for', roomOrCategoryId, ':', newOrder);
     setOrder(prev => {
       const newState = {
         ...prev,
@@ -58,7 +145,12 @@ export function useOrderStorage() {
           [roomOrCategoryId]: newOrder
         }
       };
-      console.log('[DEBUG] New order state:', newState);
+      
+      // Clean up empty arrays
+      if (newOrder.length === 0) {
+        delete newState.devices[roomOrCategoryId];
+      }
+      
       return newState;
     });
   };
@@ -103,7 +195,6 @@ export function useOrderStorage() {
 
   const getDeviceOrder = (roomOrCategoryId: string, devices: [string, any][]): [string, any][] => {
     const savedOrder = order.devices[roomOrCategoryId];
-    console.log('[DEBUG] getDeviceOrder:', { roomOrCategoryId, savedOrder, devicesCount: devices.length });
     
     if (!savedOrder || savedOrder.length === 0) return devices;
     
@@ -120,7 +211,6 @@ export function useOrderStorage() {
       return aIndex - bIndex;
     });
     
-    console.log('[DEBUG] Ordered devices:', orderedDevices.map(d => d[0]));
     return orderedDevices;
   };
 
@@ -130,6 +220,7 @@ export function useOrderStorage() {
     updateDeviceOrder,
     getRoomOrder,
     getCategoryOrder,
-    getDeviceOrder
+    getDeviceOrder,
+    isLoading
   };
 }

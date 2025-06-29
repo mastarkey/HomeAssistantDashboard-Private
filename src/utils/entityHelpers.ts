@@ -1,5 +1,6 @@
 // Helper functions for entity organization
 import type { Device, Area } from './deviceRegistry';
+import { normalizeRoomName } from './roomNormalization';
 
 export interface Room {
   id: string;
@@ -82,31 +83,31 @@ export function extractRoomFromEntity(_entityId: string, friendlyName: string): 
   // Check for actual room names
   for (const room of actualRooms) {
     if (name.includes(room)) {
-      // Handle special cases like "master bedroom" or "guest bedroom"
-      if (room === 'bedroom' && (name.includes('master') || name.includes('guest'))) {
-        return name.includes('master') ? 'master bedroom' : 'guest bedroom';
+      // Use normalized room names to avoid duplicates
+      if (room === 'bedroom') {
+        return normalizeRoomName(room);
       }
       
-      // Handle "front patio" and "back patio"
-      if (room === 'patio' && (name.includes('front') || name.includes('back'))) {
-        return name.includes('front') ? 'front patio' : 'back patio';
+      // Handle "front patio" and "back patio" - normalize them
+      if (room === 'patio') {
+        return normalizeRoomName('patio');
       }
       
-      return room;
+      return normalizeRoomName(room);
     }
   }
   
   // Check for rooms with numbers (e.g., "bedroom 2")
   const roomWithNumber = name.match(/(bedroom|bathroom|office)\s*\d+/i);
   if (roomWithNumber) {
-    return roomWithNumber[0].toLowerCase();
+    return normalizeRoomName(roomWithNumber[0].toLowerCase());
   }
   
   // Check if it's a location indicator + room
   for (const location of locationIndicators) {
     for (const room of actualRooms) {
       if (name.includes(location) && name.includes(room)) {
-        return `${location} ${room}`;
+        return normalizeRoomName(`${location} ${room}`);
       }
     }
   }

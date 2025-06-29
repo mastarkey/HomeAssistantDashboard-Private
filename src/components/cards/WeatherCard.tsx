@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Cloud, CloudRain, CloudSnow, Sun, CloudDrizzle, Zap, Wind, Droplets, Eye, MoreVertical } from 'lucide-react';
+import { Cloud, CloudRain, CloudSnow, Sun, CloudDrizzle, Zap, Wind, Droplets, Eye, MoreVertical, MapPin, Info } from 'lucide-react';
 import EditDeviceModal from '../EditDeviceModal';
+import WeatherModal from '../modals/WeatherModal';
 
 interface WeatherCardProps {
   entityId: string;
@@ -8,10 +9,14 @@ interface WeatherCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
 const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showWeatherModal, setShowWeatherModal] = useState(false);
   const friendlyName = entity.attributes?.friendly_name || entityId;
   const state = entity.state;
   const attributes = entity.attributes || {};
@@ -22,6 +27,23 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpd
   const windSpeed = attributes.wind_speed;
   const visibility = attributes.visibility;
   const forecast = attributes.forecast || [];
+  const attribution = attributes.attribution || 'Weather Provider';
+  
+  // Extract location from friendly name
+  let location = friendlyName.replace(/weather/i, '').trim();
+  
+  // If location is generic or empty, try to be more specific
+  if (!location || location.toLowerCase() === 'home') {
+    // Check for additional location info in attributes
+    if (attributes.location) {
+      location = attributes.location;
+    } else if (attributes.station) {
+      location = attributes.station;
+    } else {
+      // If still generic, keep original but add context
+      location = location || 'Home';
+    }
+  }
   
   // Get weather icon based on state
   const getWeatherIcon = (condition: string) => {
@@ -50,11 +72,17 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpd
   
   return (
     <>
-    <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group">
+    <div 
+      className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer"
+      onClick={() => setShowWeatherModal(true)}
+    >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
-        <div>
-          <h3 className="text-white font-medium text-lg">{friendlyName}</h3>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <MapPin className="w-4 h-4 text-gray-400" />
+            <h3 className="text-white font-medium text-lg">{location}</h3>
+          </div>
           <p className="text-sm text-gray-400 capitalize">{state}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -100,8 +128,8 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpd
         )}
         {pressure !== undefined && (
           <div className="flex items-center gap-2 text-sm">
-            <div className="w-4 h-4 text-gray-400 text-xs font-bold flex items-center justify-center">hPa</div>
-            <span className="text-gray-300">{pressure}</span>
+            <div className="w-4 h-4 text-gray-400 text-[10px] font-bold flex items-center justify-center">hPa</div>
+            <span className="text-gray-300">{Math.round(pressure)}</span>
           </div>
         )}
         {visibility !== undefined && (
@@ -133,8 +161,15 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpd
         </div>
       )}
       
+      {/* Attribution Footer */}
       <div className="mt-3">
-        <span className="text-xs text-gray-500 uppercase tracking-wider">WEATHER</span>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-gray-500 uppercase tracking-wider">WEATHER</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-gray-400">
+          <Info className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate">{attribution}</span>
+        </div>
       </div>
     </div>
     
@@ -146,6 +181,13 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ entityId, entity, onEntityUpd
         onSave={onEntityUpdate}
         rooms={rooms}
         isCustom={isCustom}
+      />
+    )}
+    
+    {showWeatherModal && (
+      <WeatherModal
+        entity={entity}
+        onClose={() => setShowWeatherModal(false)}
       />
     )}
     </>

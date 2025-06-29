@@ -9,6 +9,9 @@ interface LockCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
 const LockCard: React.FC<LockCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {

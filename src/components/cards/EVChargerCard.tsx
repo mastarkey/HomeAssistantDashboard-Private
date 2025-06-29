@@ -12,6 +12,7 @@ import {
   PlugZap
 } from 'lucide-react';
 import EVChargerModal from '../EVChargerModal';
+import { SelectionOverlay } from './SelectionOverlay';
 
 interface EVChargerCardProps {
   entityId: string;
@@ -19,9 +20,21 @@ interface EVChargerCardProps {
   onEntityUpdate?: (entityId: string, updates: any) => void;
   rooms?: Array<{ id: string; name: string }>;
   isCustom?: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: () => void;
 }
 
-const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntityUpdate, rooms = [], isCustom = false }) => {
+const EVChargerCard: React.FC<EVChargerCardProps> = ({ 
+  entityId, 
+  entity, 
+  onEntityUpdate, 
+  rooms = [], 
+  isCustom = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle
+}) => {
   const { callService, entities } = useHomeAssistant();
   const [isControlling, setIsControlling] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -198,10 +211,15 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
   
   return (
     <>
-      <div 
-        className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative overflow-hidden"
-        onClick={() => setShowModal(true)}
+      <SelectionOverlay
+        isSelectionMode={isSelectionMode}
+        isSelected={isSelected}
+        onSelectionToggle={onSelectionToggle}
       >
+        <div 
+          className="bg-gray-800/50 backdrop-blur rounded-2xl p-4 hover:bg-gray-800 transition-all duration-150 group cursor-pointer relative overflow-hidden"
+          onClick={isSelectionMode ? undefined : () => setShowModal(true)}
+        >
         {/* Background gradient for charging state */}
         {chargingState === 'charging' && (
           <div className="absolute inset-0 bg-gradient-to-br from-green-600/10 to-blue-600/10" />
@@ -356,6 +374,7 @@ const EVChargerCard: React.FC<EVChargerCardProps> = ({ entityId, entity, onEntit
           </div>
         </div>
       </div>
+      </SelectionOverlay>
       
       {/* EV Charger Modal */}
       {showModal && (

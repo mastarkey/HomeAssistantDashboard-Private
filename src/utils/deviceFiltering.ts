@@ -73,15 +73,16 @@ export function isPrimaryDevice(
   const friendlyName = entity.attributes?.friendly_name || '';
   const entityName = entityId.split('.')[1];
   
-  // For Tesla Wall Connector, only show the status entity as primary
+  // For Tesla Wall Connector, show appropriate entities
   if (entityId.toLowerCase().includes('tesla_wall_connector') || 
       entityId.toLowerCase().includes('wall_connector') ||
       friendlyName.toLowerCase().includes('tesla wall connector') ||
       friendlyName.toLowerCase().includes('wall connector')) {
     
-    // Only show the status entity as the main card
-    if (entityId.endsWith('_status')) {
-      console.log(`[DEBUG] SHOWING primary Tesla status entity: ${entityId}`);
+    // Show status, switch, and primary sensor entities
+    if (entityId.endsWith('_status') || domain === 'switch' || 
+        (domain === 'sensor' && !SUB_ENTITY_PATTERNS.some(pattern => pattern.test(entityId)))) {
+      console.log(`[DEBUG] SHOWING Tesla entity: ${entityId} (domain: ${domain})`);
       return true;
     }
     
@@ -104,7 +105,8 @@ export function isPrimaryDevice(
   }
   
   // Domains that should never show as cards
-  const hiddenDomains = ['scene', 'automation', 'script', 'group', 'zone', 'person', 'sun', 'weather', 'event', 'remote'];
+  // Note: 'weather' removed from hidden domains as it's part of climate category
+  const hiddenDomains = ['scene', 'automation', 'script', 'group', 'zone', 'person', 'sun', 'event', 'remote'];
   if (hiddenDomains.includes(domain)) {
     return false;
   }
@@ -173,10 +175,17 @@ export function isPrimaryDevice(
   
   // Show actual hardware devices and important sensors
   // Include sensor and binary_sensor explicitly
-  const primaryDeviceDomains = ['light', 'switch', 'climate', 'media_player', 'camera', 'lock', 'cover', 'fan', 'vacuum', 'sensor', 'binary_sensor'];
+  // Include weather for climate category
+  const primaryDeviceDomains = ['light', 'switch', 'climate', 'weather', 'media_player', 'camera', 'lock', 'cover', 'fan', 'vacuum', 'sensor', 'binary_sensor'];
   
   if (primaryDeviceDomains.includes(domain)) {
     console.log(`[DEBUG] Evaluating ${domain}: ${entityId}`);
+    
+    // Weather entities should always be shown
+    if (domain === 'weather') {
+      console.log(`[DEBUG] ${entityId} is weather entity - ALWAYS SHOW`);
+      return true;
+    }
     
     // Check if this has a recognized device type configuration - ALWAYS show these
     if (devices && allEntities) {
